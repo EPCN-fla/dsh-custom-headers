@@ -1,0 +1,8 @@
+# Applied by the profile composer (dsh.bundle.patch) when this package is
+# added to a profile. Mounts the host half (the `custom-headers` settings
+# namespace plus the per-model llm dispatch header injection) so the browser
+# scanner discovers `dsh.client` and serves `lib/client.js` as
+# `/plugins/dsh-custom-headers/client.js`.
+- insert:
+    - id: dsh-custom-headers
+      name: dsh-custom-headers
