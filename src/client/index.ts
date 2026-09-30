@@ -2,14 +2,19 @@
  * Browser half of dsh-custom-headers.
  *
  * Contributions, all of which dispose with the plugin fiber:
- *   1. The "自定义请求头" / "Custom headers" card inside the official
- *      Settings → Plugins → Plugin configuration tab, registered into the
- *      sanctioned `settings.plugin.item` slot keyed by the namespace it
- *      edits (`custom-headers`). Keyed entries render in ledger
- *      (registration) order and this plugin's browser half can apply BEFORE
- *      the shipped cards register, so the registration defers until the
- *      shipped web-search card is on the ledger — landing the card right
- *      below 网页搜索, at the bottom of the list.
+ *   1. The "自定义请求头" / "Custom headers" configuration card. Where it
+ *      registers depends on the host generation:
+ *        - DSH 0.1.7+: the keyed `plugins.bundle.config` slot under the
+ *          package name (the retired `settings.plugin.item`'s successor),
+ *          rendered on this package's Plugins-page detail view; and
+ *        - DSH 0.1.5: the sanctioned `settings.plugin.item` slot keyed by
+ *          the namespace it edits (`custom-headers`). Keyed entries render
+ *          in ledger (registration) order and this plugin's browser half can
+ *          apply BEFORE the shipped cards register, so the registration
+ *          defers until the shipped web-search card is on the ledger —
+ *          landing the card right below 网页搜索, at the bottom of the list.
+ *      Both registrations go through `slots.inject`, so each runs only on
+ *      the generation that declares its slot.
  *   2. The DOM bypass injector: a MutationObserver over the whole document
  *      keeps the official Models page's model rows (the provider card's
  *      model catalog) equipped with the header-profile picker.
@@ -151,13 +156,48 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  // ---- Plugin-configuration card ('设置 → 插件 → 插件配置') ----
-  // The sanctioned `settings.plugin.item` slot is keyed by settings
-  // namespace; the host half registers `custom-headers`, this card claims
-  // it, and the official tab pairs the two. External invalidations of the
-  // namespace (another surface's save, a reconnect) reach the card through
-  // the subscribe face so a stale baseline never fences its next save.
+  // ---- Plugin-configuration card ----
+  // Two slot registrations, one per host generation; each goes through
+  // slots.inject, which fires only once its slot is DECLARED, so exactly one
+  // of them ever lands: the legacy keyed settings.plugin.item entry on DSH
+  // 0.1.5, the keyed plugins.bundle.config entry on DSH 0.1.7+. External
+  // invalidations of the namespace (another surface's save, a reconnect)
+  // reach the card through the subscribe face so a stale baseline never
+  // fences its next save.
   const cardListeners = new Set<() => void>()
+  /**
+   * The injected face both card registrations hand to the slot renderer: the
+   * settings Remote plus the external-invalidation subscription.
+   */
+  const cardInject = (): Record<string, unknown> => ({
+    api: settingsApi,
+    subscribe: (listener: () => void) => {
+      cardListeners.add(listener)
+      return () => { cardListeners.delete(listener) }
+    },
+  })
+
+  // DSH 0.1.7+: a bundle's own configuration registers into the keyed
+  // plugins.bundle.config slot under its package name and renders on the
+  // package's Plugins-page detail view. On 0.1.5 the slot is never declared
+  // and this registration simply never runs.
+  ctx.effect(() => {
+    const slots = (ctx as unknown as { slots?: SlotRegistrarFace }).slots
+    if (slots === undefined || typeof slots.inject !== 'function') return
+    return slots.inject('plugins.bundle.config', () =>
+      slots.register({
+        name: 'plugins.bundle.config',
+        key: PLUGIN_ID,
+        id: `${PLUGIN_ID}-card`,
+        locale: STORE_NS,
+        inject: cardInject,
+      }, HeadersCard))
+  }, 'dsh-custom-headers: bundle configuration card')
+
+  // DSH 0.1.5: the sanctioned `settings.plugin.item` slot is keyed by
+  // settings namespace; the host half registers `custom-headers`, this card
+  // claims it, and the official tab pairs the two. On 0.1.7+ the slot is
+  // retired (never declared) and this registration never runs.
   ctx.effect(() => {
     const slots = (ctx as unknown as { slots?: SlotRegistrarFace }).slots
     if (slots === undefined || typeof slots.entries !== 'function' || typeof slots.subscribe !== 'function') return
@@ -180,13 +220,7 @@ export function apply(ctx: ClientContext): void {
         key: CUSTOM_HEADERS_NS,
         id: `${PLUGIN_ID}-card`,
         locale: STORE_NS,
-        inject: () => ({
-          api: settingsApi,
-          subscribe: (listener: () => void) => {
-            cardListeners.add(listener)
-            return () => { cardListeners.delete(listener) }
-          },
-        }),
+        inject: cardInject,
       }, HeadersCard)
     }
     /**
