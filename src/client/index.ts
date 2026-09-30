@@ -31,7 +31,7 @@ import { en, zh, type ChKey } from './locales.ts'
 import { describeNamespaces, writeProfilePick } from './ops.ts'
 import { STYLES } from './styles.ts'
 
-/** Stable plugin id, matching the cordis.patch.yml row and the bundle id. */
+/** Stable plugin id (cordis plugin name, bundle id, client module id). The cordis row id is `custom-headers`. */
 export const name = PLUGIN_ID
 
 /** Cordis fiber dependencies of the browser half. */

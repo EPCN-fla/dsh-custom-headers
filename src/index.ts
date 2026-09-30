@@ -41,7 +41,7 @@ import {
   type HeaderProfile,
 } from './headers.js'
 
-/** Stable plugin id, matching the cordis.patch.yml row and the bundle id. */
+/** Stable plugin id (cordis plugin name, bundle id, client module id). The cordis row id is `custom-headers`. */
 export const name = PLUGIN_ID
 
 /** Hard dependencies: the loader waits for these before calling apply. */
