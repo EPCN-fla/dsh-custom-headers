@@ -9,6 +9,7 @@ import {
   assertValidProfiles,
   modelProfileIdOf,
   normalizeProfiles,
+  profilesFromUnknown,
   resolveProfileHeaders,
   validateProfiles,
   type HeaderProfile,
@@ -167,5 +168,29 @@ describe('modelProfileIdOf', () => {
   it('degrades a non-string pick to undefined', () => {
     const hostile = { acme: { models: [{ id: 'm1', headersProfile: 42 }] } }
     expect(modelProfileIdOf(hostile, 'acme', 'm1', 'headersProfile')).toBeUndefined()
+  })
+})
+
+describe('profilesFromUnknown', () => {
+  it('keeps flaggable rows intact (unlike normalizeProfiles)', () => {
+    // Empty ids and blank names survive coercion so validateProfiles can flag
+    // them; normalization would drop both silently.
+    const coerced = profilesFromUnknown([
+      { id: '', headers: [{ name: '', value: 'v' }] },
+      { id: 'p', headers: [] },
+    ])
+    expect(validateProfiles(coerced).map(issue => issue.code)).toEqual(['id-empty', 'name-empty'])
+  })
+
+  it('coerces non-string fields to empty strings and skips non-record rows', () => {
+    expect(profilesFromUnknown([
+      'garbage',
+      { id: 42, headers: [{ name: null, value: 7 }, 'junk'] },
+    ])).toEqual([{ id: '', headers: [{ name: '', value: '' }] }])
+  })
+
+  it('answers an empty list for a missing or non-array value', () => {
+    expect(profilesFromUnknown(undefined)).toEqual([])
+    expect(profilesFromUnknown({ profiles: 'nope' })).toEqual([])
   })
 })

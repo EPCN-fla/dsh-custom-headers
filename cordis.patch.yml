@@ -1,8 +1,15 @@
 # Applied by the profile composer (dsh.bundle.patch) when this package is
-# added to a profile. Mounts the host half (the `custom-headers` settings
-# namespace plus the per-model llm dispatch header injection) so the browser
+# added to a profile. Mounts the host half (the `custom-headers` header
+# profiles plus the per-model llm dispatch header injection) so the browser
 # scanner discovers `dsh.client` and serves `lib/client.js` as
 # `/plugins/dsh-custom-headers/client.js`.
+#
+# The row id is `custom-headers` — NOT the package name — because on DSH
+# 0.1.7 the row id doubles as the plugin's settings namespace (the key the
+# settings Remote and the settings/document-updated event address it by).
+# Keeping the 0.1.5 namespace name means a settings document written by
+# plugin 0.1.x on DSH 0.1.5 — and the one-time settings.yaml import on the
+# first 0.1.7 boot — both land on this entry unchanged.
 - insert:
-    - id: dsh-custom-headers
+    - id: custom-headers
       name: dsh-custom-headers
