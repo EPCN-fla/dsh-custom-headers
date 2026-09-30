@@ -35,6 +35,91 @@ interface Harness {
   validate: ((value: { profiles: HeaderProfile[] }) => void) | undefined
 }
 
+/** The 0.1.7 settings face: profile-entry forms (describe/configure). */
+interface FakeSettingsForms {
+  configure(presentation: { auto?: boolean }, owner?: unknown): () => void
+  describe(): Array<{ ns: string; value: unknown }>
+}
+
+interface ModernHarness {
+  ctx: Context
+  llm: { registerAdapter(providers: string[], adapter: unknown): { replaced: string[] } }
+  settings: FakeSettingsForms
+  /** The fiber marker the plugin reads as ctx.fiber. */
+  fiber: object
+  /** internal/config listeners the plugin registered. */
+  configListeners: Array<(this: unknown, raw: unknown, next: () => unknown) => unknown>
+  /** Every configure() call's presentation argument. */
+  configured: Array<{ auto?: boolean }>
+  disposers: Array<() => void>
+  /** Move the live volatile cell (a user edit of the profiles field). */
+  setOwnProfiles(value: HeaderProfile[]): void
+  /** Move the pi-ai entry's served value (a pick write, a route edit). */
+  setPiValue(value: unknown): void
+}
+
+/** Build a fake 0.1.7 host context: forms-style settings plus a volatile Config cell. */
+function makeModernHarness(options?: {
+  profiles?: HeaderProfile[]
+  piValue?: unknown
+  /** Extra face members, e.g. a legacy installSection that must stay unused. */
+  extraSettings?: Record<string, unknown>
+}): ModernHarness {
+  let piValue: unknown = options?.piValue
+  let ownProfiles: HeaderProfile[] = options?.profiles ?? []
+  const fiber = {}
+  const configured: Array<{ auto?: boolean }> = []
+  const configListeners: ModernHarness['configListeners'] = []
+  const disposers: Array<() => void> = []
+  const llm = {
+    registerAdapter(_providers: string[], _adapter: unknown) {
+      return { replaced: [] as string[] }
+    },
+  }
+  const settings: FakeSettingsForms = {
+    configure(presentation) {
+      configured.push(presentation)
+      return () => {}
+    },
+    describe() {
+      return piValue === undefined ? [] : [{ ns: PI_AI_NS, value: piValue }]
+    },
+    ...options?.extraSettings,
+  }
+  const ctx = {
+    settings,
+    fiber,
+    inject(names: string[], callback: (c: unknown) => void) {
+      if (names[0] === 'llm') callback(ctx)
+      return undefined
+    },
+    effect(fn: () => unknown, _name?: string) {
+      const dispose = fn()
+      if (typeof dispose === 'function') disposers.push(dispose as () => void)
+      return dispose
+    },
+    on(event: string, listener: ModernHarness['configListeners'][number]) {
+      if (event === 'internal/config') configListeners.push(listener)
+      return () => {}
+    },
+  }
+  ;(ctx as unknown as { llm: typeof llm }).llm = llm
+  // The volatile Config field as DSH 0.1.7 hands it to apply(): a live cell.
+  const config = { profiles: { get: () => ownProfiles } }
+  apply(ctx as unknown as Context, config)
+  return {
+    ctx: ctx as unknown as Context,
+    llm,
+    settings,
+    fiber,
+    configListeners,
+    configured,
+    disposers,
+    setOwnProfiles(value) { ownProfiles = value },
+    setPiValue(value) { piValue = value },
+  }
+}
+
 /** Build a fake host context wiring the seams apply() consumes. */
 function makeHarness(options?: {
   profiles?: HeaderProfile[]
@@ -262,6 +347,100 @@ describe('stampModelHeaders', () => {
     expect(rich['headers']).toEqual({ 'x-a': '1' })
     stampModelHeaders(rich, undefined)
     expect(rich['headers']).toBe(carried)
+  })
+})
+
+describe('settings forms seam (DSH 0.1.7)', () => {
+  it('registers the page policy and stamps from describe() plus the volatile cell', async () => {
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    expect(harness.configured).toEqual([{ auto: false }])
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+  })
+
+  it('follows live profile edits without a remount', async () => {
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+
+    // A user edit to the volatile profiles field reaches the very next call.
+    harness.setOwnProfiles([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'edited' }] }])
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toEqual({ 'x-tenant': 'edited' })
+  })
+
+  it('restores the descriptor when the pick disappears from the served entry', async () => {
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+
+    harness.setPiValue({ providers: { acme: { models: [{ id: 'm1' }] } } })
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect('headers' in modelObj).toBe(false)
+  })
+
+  it('refuses an invalid profile list through internal/config, own fiber only', () => {
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    expect(harness.configListeners).toHaveLength(1)
+    const listener = harness.configListeners[0]!
+    const next = () => ({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
+    expect(() => listener.call(harness.fiber, undefined, next)).toThrow(/case-insensitively/)
+    // Another entry's recompose is passed through untouched.
+    const other = () => ({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
+    expect(listener.call({}, undefined, other)).toEqual({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
+  })
+
+  it('prefers the forms seam when a host somehow offers both faces', () => {
+    let installed = 0
+    const harness = makeModernHarness({
+      profiles: GW_PROFILES,
+      piValue: PI_SECTION,
+      extraSettings: {
+        installSection() { installed += 1 },
+        get() { return undefined },
+      },
+    })
+    expect(installed).toBe(0)
+    expect(harness.configured).toEqual([{ auto: false }])
+  })
+
+  it('degrades to composition-base profiles when no settings service exists', async () => {
+    // A minimal composition without any settings service: apply() must not
+    // throw, adapters still wrap, and no model can name a pick.
+    const llm = {
+      registerAdapter(_providers: string[], _adapter: unknown) {
+        return { replaced: [] as string[] }
+      },
+    }
+    const ctx = {
+      settings: undefined,
+      inject(names: string[], callback: (c: unknown) => void) {
+        if (names[0] === 'llm') callback(ctx)
+        return undefined
+      },
+      effect(fn: () => unknown) { return fn() },
+      on() { return () => {} },
+    }
+    ;(ctx as unknown as { llm: typeof llm }).llm = llm
+    apply(ctx as unknown as Context, { profiles: GW_PROFILES })
+
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    llm.registerAdapter(['acme'], adapter)
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect('headers' in modelObj).toBe(false)
   })
 })
 

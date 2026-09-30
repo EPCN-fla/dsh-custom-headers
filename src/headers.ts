@@ -182,6 +182,25 @@ export function resolveProfileHeaders(
 }
 
 /**
+ * Coerce an untrusted raw `profiles` value into the shape {@link validateProfiles}
+ * reports on, WITHOUT dropping anything: unlike {@link normalizeProfiles} (which
+ * cleans for consumption), coercion preserves empty ids and blank names so the
+ * validator can flag them. Non-record rows collapse to empty fields — their
+ * shape errors belong to the schema layer, not to profile rules.
+ * @param raw - the raw `profiles` field of a configuration snapshot.
+ */
+export function profilesFromUnknown(raw: unknown): HeaderProfile[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(isRecord).map(profile => ({
+    id: typeof profile['id'] === 'string' ? profile['id'] : '',
+    headers: (Array.isArray(profile['headers']) ? profile['headers'] : []).filter(isRecord).map(entry => ({
+      name: typeof entry['name'] === 'string' ? entry['name'] : '',
+      value: typeof entry['value'] === 'string' ? entry['value'] : '',
+    })),
+  }))
+}
+
+/**
  * The header-profile id one pi-ai model row names, or undefined when the row
  * (or the field) does not exist. Reads the RAW user-layer providers dict the
  * browser half edits; a non-string value degrades to "no pick" rather than
