@@ -32,9 +32,15 @@ Putting these headers in the provider profile sprays them over every model on th
 
 ## Installation
 
-Requires deepseek-harness **0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2** or **0.1.5-rc.2** (`@deepseek-ai/dsh-*` packages ≥ 0.1.5-rc.2; both settings generations are adapted to, and one build runs on both).
+Requires a deepseek-harness **prerelease line — 0.1.5 (≥ rc.2), 0.1.7 (≥ rc.1), or 0.2.0 (≥ rc.1)**; prereleases only: the line finals (0.1.7, 0.2.0) are not admitted yet and ship line by line after re-verification. Both settings generations (the Profile-held live configuration on 0.1.7+, the classic settings section on 0.1.5) are adapted to, and one build runs on both.
 
-All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra composition wiring needed after install.
+| Plugin version | Supported DSH versions (peer-range semantics) |
+| --- | --- |
+| 0.3.0 (unreleased) | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0 |
+| 0.2.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 |
+| 0.1.0 | ≥0.1.5-rc.2 |
+
+All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra configuration wiring needed after install.
 
 ### From npm
 
@@ -50,7 +56,7 @@ dsh plugin --profile web add github:EPCN-fla/dsh-custom-headers
 
 When installed from a git source, npm runs the package's `prepare` script to build it automatically (requires Node `^22.19.0` or `>=24`).
 
-### Local development
+### From a tarball
 
 ```sh
 git clone https://github.com/EPCN-fla/dsh-custom-headers.git
@@ -58,15 +64,18 @@ cd dsh-custom-headers
 npm install
 npm run build
 npm pack        # produces dsh-custom-headers-<version>.tgz
+dsh plugin --profile web add ./dsh-custom-headers-<version>.tgz
 ```
 
-Then install the tarball with the CLI:
+### Local development
+
+During development you can also point the CLI at the working-copy directory; re-run `npm run build` after each change:
 
 ```sh
-dsh plugin --profile web add /path/to/dsh-custom-headers-0.1.0.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-custom-headers
 ```
 
-During development you can also point the CLI at the working-copy directory; re-run `npm run build` after each change.
+Restart DSH Web after installing. Confirm the load: `dsh --profile web --dump-config | grep custom-headers`.
 
 ## Usage
 
