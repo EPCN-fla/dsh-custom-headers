@@ -36,7 +36,7 @@ Requires a deepseek-harness **prerelease line — 0.1.5 (≥ rc.2), 0.1.7 (≥ r
 
 | Plugin version | Supported DSH versions (peer-range semantics) |
 | --- | --- |
-| 0.3.0 (unreleased) | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0 |
+| 0.3.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0 |
 | 0.2.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 |
 | 0.1.0 | ≥0.1.5-rc.2 |
 
