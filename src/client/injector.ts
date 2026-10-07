@@ -5,9 +5,10 @@
  *
  * The official Models-page slot contract's sanctioned seats are coarser than
  * a model row, so this plugin mounts its picker as a DOM contribution inside
- * each model row's own "Capacities" (容量) disclosure — folded away together
- * with the official capacity fields while the row is collapsed, and rendered
- * on the row below "上下文窗口" / "最大输出" (grid-column 1/-1) with its own
+ * each model row's own disclosure — "Model options" (模型选项) since DSH
+ * 0.1.7, "Capacities" (容量) on 0.1.5 — folded away together with the
+ * official capacity fields while the row is collapsed, and rendered on the
+ * row below "上下文窗口" / "最大输出" (grid-column 1/-1) with its own
  * "请求头" label when expanded. Rows are found through the official per-row
  * disclosure button, matched by aria-label prefix in the host's ACTIVE
  * language (the labels are resolved through the host's own `settings.models`
@@ -41,7 +42,7 @@ export type { SettingsJoin }
  * language first and English last — the host's own fallback floor.
  */
 export interface HostLabels {
-  /** The per-row disclosure button ("Capacities", "容量", …). */
+  /** The per-row disclosure button ("Model options"/模型选项 on 0.1.7+, "Capacities"/容量 on 0.1.5). */
   capacity: readonly string[]
   /** The model-id input. */
   modelId: readonly string[]
