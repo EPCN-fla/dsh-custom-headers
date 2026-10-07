@@ -86,5 +86,10 @@
     "react-dom": "^18.2.0",
     "typescript": "^5.9.0",
     "vitest": "^4.0.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "@google/genai": false,
+    "protobufjs": false
   }
 }
