@@ -167,6 +167,22 @@ describe('HeadersCard', () => {
     expect(container!.textContent).toContain(t('emptyProfiles'))
   })
 
+  it('flags an unrepresentable value on the value input and blocks the save', async () => {
+    const { api, mutate } = fakeApi([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'acme' }] }])
+    await renderCard({ t, api, subscribe: baseSubscribe })
+    expand()
+    expandProfile('gw')
+    // A non-latin1 character survives text-input sanitization (a newline
+    // would not) and Fetch refuses it as a header value.
+    type(input('Value 1-1'), 'Bearer €')
+    expect(container!.textContent).toContain(t('issueValueInvalid'))
+    // The value input is marked invalid; the name input is not.
+    expect(input('Value 1-1').className).toContain('ch-input-invalid')
+    expect(input('Header name 1-1').className).not.toContain('ch-input-invalid')
+    expect(buttonByText(t('save')).disabled).toBe(true)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('blocks saving duplicate ids case-insensitively', async () => {
     const { api, mutate } = fakeApi([])
     await renderCard({ t, api, subscribe: baseSubscribe })

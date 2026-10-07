@@ -32,17 +32,23 @@ DSH 的提供方资料（provider profile）本身支持 `headers`，但它作�
 
 ## 安装
 
-要求：deepseek-harness **0.1.7-rc.1** 或 **0.1.5-rc.2**（`@deepseek-ai/dsh-*` 包 ≥ 0.1.5-rc.2；两个世代的设置机制均已适配，同一份构建在两者上运行）。
+要求：deepseek-harness 的 **0.1.5 预发布线（≥ rc.2）、0.1.7 预发布线（≥ rc.1），或 0.2.0 预发布线（≥ rc.1）**——仅预发布线；各线正式版（0.1.7、0.2.0）暂不接纳，待逐线验证后放行。两个世代的设置机制（0.1.7+ 的 Profile 实时配置、0.1.5 的设置节）均已适配，同一份构建在两者上运行。
+
+| 插件版本 | 适配的 DSH 版本（peer 区间语义） |
+| --- | --- |
+| 0.3.0 | 0.1.5-rc.2 ~ <0.1.5，0.1.7-rc.1 ~ <0.1.7，0.2.0-rc.1 ~ <0.2.0 |
+| 0.2.0 | 0.1.5-rc.2 ~ <0.1.5，0.1.7-rc.1 |
+| 0.1.0 | ≥0.1.5-rc.2 |
 
 三种方式都通过 DSH CLI 把插件加入指定的 Profile（这里以 `web` 为例，按需替换）。本包自带 `cordis.patch.yml`，组合器会自动挂载 host 半端，并向 Web 客户端提供 `/plugins/dsh-custom-headers/client.js`——安装后无需额外的组合配置。
 
-### From npm
+### 从 npm 安装
 
 ```sh
 dsh plugin --profile web add dsh-custom-headers
 ```
 
-### From GitHub
+### 从 GitHub 安装
 
 ```sh
 dsh plugin --profile web add github:EPCN-fla/dsh-custom-headers
@@ -50,7 +56,7 @@ dsh plugin --profile web add github:EPCN-fla/dsh-custom-headers
 
 通过 git 源安装时，npm 会执行包的 `prepare` 脚本自动完成构建（要求 Node `^22.19.0` 或 `>=24`）。
 
-### Local development
+### 从 tarball 安装
 
 ```sh
 git clone https://github.com/EPCN-fla/dsh-custom-headers.git
@@ -58,15 +64,18 @@ cd dsh-custom-headers
 npm install
 npm run build
 npm pack        # 产出 dsh-custom-headers-<version>.tgz
+dsh plugin --profile web add ./dsh-custom-headers-<version>.tgz
 ```
 
-然后用 CLI 安装这个 tarball：
+### 本地开发
+
+开发期也可以把 CLI 直接指向工作副本目录；每次改动后重新 `npm run build` 即可生效：
 
 ```sh
-dsh plugin --profile web add /path/to/dsh-custom-headers-0.1.0.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-custom-headers
 ```
 
-开发期也可以把 CLI 直接指向工作副本目录；每次改动后重新 `npm run build` 即可生效。
+安装后重启 DSH Web。确认加载：`dsh --profile web --dump-config | grep custom-headers`。
 
 ## 使用
 
@@ -139,7 +148,7 @@ llm-pi-ai:
 
 - 仅对 **pi-ai 适配器**（`llm-pi-ai` 提供方路由，含手工声明的自定义提供方）的调用生效；其他适配器家族（如 `deepseek-official`）不经过该连线路径，选择不会被应用。
 - 请求头应用于模型的**实际 LLM 请求**；「从端点获取模型列表」等配置期发现请求沿用提供方资料自身的头，不附加模型级配置。
-- 下拉框通过 DOM 锚定注入到官方模型页面的「容量」折叠区内（官方槽位没有模型行级扩展点）。已按 0.1.5-rc.2 与 0.1.7-rc.1 的页面结构（两者一致）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
+- 下拉框通过 DOM 锚定注入到官方模型页面每行的「模型选项」折叠区内（0.1.5 称为「容量」；官方槽位没有模型行级扩展点）。已按 0.1.5-rc.2、0.1.7-rc.1 – 0.2.0-rc.2 的页面结构（各版本结构一致；折叠区名称经宿主词典逐代解析）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
 - （仅 DSH 0.1.5）「插件配置」中的卡片位置依赖内置「网页搜索」卡片的注册：本插件会等待其出现在槽位账本后再注册（约 10 秒兜底超时）；若部署裁剪了内置插件包导致其不存在，本卡片仍会注册，但位置取决于当时的账本顺序。DSH 0.1.7+ 的卡片位于本包详情页，无位置依赖。
 - 同名请求头在一个配置内重复出现时，按大小写不敏感「后者覆盖前者」处理（Fetch `Headers` 语义）。
 

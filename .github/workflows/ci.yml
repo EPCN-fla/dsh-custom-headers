@@ -1,0 +1,140 @@
+# CI: PR 运行编译+测试；标签推送运行编译+测试+发布。
+# 普通分支推送不触发（on.push 只匹配 tags）。
+#
+# 发布使用 npm Trusted Publishing（OIDC），无需任何长期 token。前置配置
+# （一次性，在 npmjs.com 完成）：包 dsh-custom-headers → Settings →
+# Trusted Publisher → GitHub Actions：owner = EPCN-fla，repository =
+# dsh-custom-headers，workflow filename = ci.yml（environment 留空）。
+# 版本号由维护者手工升级（本工作流绝不改版本）；tag 必须等于
+# v${package.json.version}，否则语义门禁拒绝发布。
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 编译 + 测试：PR 与标签推送都运行。
+  verify:
+    name: build + test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        # engines 声明 ^22.19.0 || >=24：两条腿都跑，防止无意引入 24-only API。
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # npm ci 严格按 package-lock.json 安装（含 esbuild 的 postinstall）。
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test
+
+      - name: build
+        run: npm run build
+
+      # 真实打包并消费产物：安装 tarball 并导入两个入口。dry-run 只列文件，
+      # 抓不住 exports 映射损坏、files 漏收（比如丢 cordis.patch.yml 会让
+      # dsh plugin add 直接失败）或 client 包装器回归。
+      - name: pack and consume the artifact
+        run: |
+          npm pack --silent --pack-destination /tmp
+          mkdir -p /tmp/ch-consume && cd /tmp/ch-consume
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund /tmp/dsh-custom-headers-*.tgz
+          node -e "import('dsh-custom-headers').then((m) => { if (m.name !== 'dsh-custom-headers') throw new Error('host entry name mismatch') })"
+          node -e "
+            const fs = require('fs')
+            const path = require.resolve('dsh-custom-headers/client')
+            const head = fs.readFileSync(path, 'utf8').slice(0, 200)
+            if (!head.startsWith('window.__ModuleLoader__.load({')) throw new Error('client wrapper missing')
+            if (!head.includes('id: \"dsh-custom-headers\"')) throw new Error('client module id mismatch')
+            console.log('artifact OK:', require('dsh-custom-headers/package.json').version)
+          "
+          test -f node_modules/dsh-custom-headers/cordis.patch.yml || { echo 'cordis.patch.yml missing from the artifact'; exit 1; }
+
+  # 发布：仅标签推送；语义门禁全过后才 npm publish。
+  publish:
+    name: npm publish
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing 的 OIDC 交换
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Trusted Publishing 需要 npm CLI ≥ 11.5.1；钉在 11.x 主线内（不追
+      # latest，避免新版 npm 当天破坏 OIDC 交换）。
+      - name: ensure npm CLI with trusted publishing support
+        run: npm install -g npm@^11.5.1
+
+      - run: npm ci
+
+      # 语义门禁 1：tag 必须等于 v${package.json.version}。
+      - name: gate — tag matches package.json version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.ref_name }}" != "v$PKG_VERSION" ]; then
+            echo "::error::tag ${{ github.ref_name }} != v$PKG_VERSION (package.json). 先手工升级版本号再打标签。"
+            exit 1
+          fi
+
+      # 语义门禁 2：预发布版本只能去非 latest 的 dist-tag（本项目声明为
+      # next）；稳定版本发布前拒绝让 latest 回退到更低版本。
+      - name: gate — dist-tag and latest-floor
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" == *-* ]]; then
+            echo "DIST_TAG=next" >> "$GITHUB_ENV"
+            echo "prerelease $PKG_VERSION → dist-tag next"
+          else
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+            # fail closed：读不到当前 latest（网络/注册表故障）就拒绝盲发，
+            # 而不是跳过地板检查；仅 E404（包从未发布）视为无地板。
+            LATEST=$(npm view dsh-custom-headers dist-tags.latest 2>&1) || {
+              if echo "$LATEST" | grep -q 'E404'; then
+                LATEST=""
+              else
+                echo "::error::无法读取 npm latest（非 E404），拒绝盲发：$LATEST"
+                exit 1
+              fi
+            }
+            if [ -n "$LATEST" ]; then
+              npx --yes semver@7 "$PKG_VERSION" -r ">$LATEST" > /dev/null || {
+                echo "::error::$PKG_VERSION 不高于现有 latest ($LATEST)，拒绝让 latest 回退。"
+                exit 1
+              }
+            fi
+            echo "stable $PKG_VERSION → dist-tag latest"
+          fi
+
+      # OIDC 可信发布：CLI 自动用 GitHub 的 OIDC token 换取短期发布凭据，
+      # 并自动生成 provenance 证明（无需 --provenance、无需 NODE_AUTH_TOKEN）。
+      # prepack 会在发布前再跑一次 build，保证发布产物与源码同步。
+      - name: publish (OIDC trusted publishing)
+        run: npm publish --access public --tag "$DIST_TAG"

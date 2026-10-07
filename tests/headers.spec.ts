@@ -60,11 +60,15 @@ describe('validateProfiles', () => {
     expect(issues[0]?.row).toBe(0)
   })
 
-  it('flags header values Fetch cannot represent', () => {
+  it('flags header values Fetch cannot represent as value-invalid, echoing the name', () => {
     // A newline in the value is a header-injection attempt Fetch refuses.
     const issues = validateProfiles([{ id: 'p', headers: [{ name: 'X-Test', value: 'a\nb' }] }])
-    expect(issues).toHaveLength(1)
-    expect(['name-invalid', 'value-invalid']).toContain(issues[0]?.code)
+    expect(issues).toEqual([{ profile: 0, row: 0, code: 'value-invalid', value: 'X-Test' }])
+  })
+
+  it('flags a bad name as name-invalid even when the value is fine', () => {
+    const issues = validateProfiles([{ id: 'p', headers: [{ name: 'bad header', value: '' }] }])
+    expect(issues).toEqual([{ profile: 0, row: 0, code: 'name-invalid', value: 'bad header' }])
   })
 })
 

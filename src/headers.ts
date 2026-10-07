@@ -38,15 +38,24 @@ export interface ProfileIssue {
   /** Index of the offending header row; absent for profile-level findings. */
   row?: number
   code: 'id-empty' | 'id-duplicate' | 'name-empty' | 'name-invalid' | 'value-invalid'
-  /** Offending value, echoed for diagnostics. */
+  /** Offending value, echoed for diagnostics; for `value-invalid` the header NAME (the raw value may be unprintable). */
   value: string
 }
 
-/** Whether a header name/value pair is representable as a Fetch header. */
-function fetchAccepts(name: string, value: string): boolean {
+/** Whether a header NAME is representable as a Fetch header (value-independent). */
+function fetchAcceptsName(name: string): boolean {
   try {
-    const headers = new Headers()
-    headers.set(name, value)
+    new Headers().set(name, '')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether a header VALUE is representable as a Fetch header (probed under a valid name). */
+function fetchAcceptsValue(value: string): boolean {
+  try {
+    new Headers().set('x-ch-probe', value)
     return true
   } catch {
     return false
@@ -82,8 +91,13 @@ export function validateProfiles(profiles: readonly HeaderProfile[]): ProfileIss
         if (entry.value.length > 0) issues.push({ profile: at, row, code: 'name-empty', value: entry.value })
         return
       }
-      if (!fetchAccepts(name, entry.value)) {
+      if (!fetchAcceptsName(name)) {
         issues.push({ profile: at, row, code: 'name-invalid', value: name })
+      } else if (!fetchAcceptsValue(entry.value)) {
+        // The value is the offending part (a newline is a header-injection
+        // attempt Fetch refuses); echo the NAME so the report still addresses
+        // the row — the raw value may be unprintable.
+        issues.push({ profile: at, row, code: 'value-invalid', value: name })
       }
     })
   })

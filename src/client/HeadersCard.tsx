@@ -70,7 +70,7 @@ function issueKey(code: ProfileIssue['code']): ChKey {
     case 'id-duplicate': return 'issueIdDuplicate'
     case 'name-empty': return 'issueNameEmpty'
     case 'name-invalid': return 'issueNameInvalid'
-    case 'value-invalid': return 'issueNameInvalid'
+    case 'value-invalid': return 'issueValueInvalid'
   }
 }
 
@@ -256,10 +256,12 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
                           : null}
                         {profile.headers.map((entry, row) => {
                           const rowIssue = profileIssues.find(issue => issue.row === row)
+                          const nameInvalid = rowIssue !== undefined && rowIssue.code !== 'value-invalid'
+                          const valueInvalid = rowIssue?.code === 'value-invalid'
                           return (
                             <div className="ch-header-row" key={row}>
                               <input
-                                className={`ch-input${rowIssue !== undefined ? ' ch-input-invalid' : ''}`}
+                                className={`ch-input${nameInvalid ? ' ch-input-invalid' : ''}`}
                                 type="text"
                                 value={entry.name}
                                 placeholder={t('headerName')}
@@ -268,7 +270,7 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
                                 onChange={(event) => { patchRow(at, row, { name: event.target.value }) }}
                               />
                               <input
-                                className="ch-input"
+                                className={`ch-input${valueInvalid ? ' ch-input-invalid' : ''}`}
                                 type="text"
                                 value={entry.value}
                                 placeholder={t('headerValue')}

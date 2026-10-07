@@ -61,16 +61,18 @@ const CARD_DEFER_TIMEOUT_MS = 10_000
 
 /**
  * The official Models-page controls this plugin anchors to, as (dictionary
- * key, English copy) pairs — the English copy is both the anchor for a host
- * that ships no such namespace and the language the host itself falls back
- * to. Resolved through the host's own dictionary so a third language (or a
- * late language pack) relabels the page and the anchors together.
+ * key, ...English copy) tuples — the English copies are both the anchors for
+ * a host that ships no such namespace and the language the host itself falls
+ * back to, and every spelling a supported generation ever shipped is listed
+ * (the disclosure was "Capacities" on 0.1.5 and is "Model options" since
+ * 0.1.7). Resolved through the host's own dictionary so a third language (or
+ * a late language pack) relabels the page and the anchors together.
  */
 const HOST_LABEL_KEYS = {
-  capacity: ['modelAdvanced', 'Capacities'],
+  capacity: ['modelAdvanced', 'Model options', 'Capacities'],
   modelId: ['modelId', 'Model ID'],
   routeId: ['customRoute', 'Provider ID'],
-} as const satisfies Record<keyof HostLabels, readonly [string, string]>
+} as const satisfies Record<keyof HostLabels, readonly [string, ...string[]]>
 
 /** Render-failure boundary: surfaces the cause instead of an empty root. */
 class ChBoundary extends Component<{ children?: ReactNode; fallback: string }, { error: string | null }> {
@@ -144,10 +146,10 @@ export function apply(ctx: ClientContext): void {
    */
   const hostLabels = (): HostLabels => {
     const translate = ctx.locale.bind(HOST_MODELS_NS) as (key: string) => string
-    const resolve = ([key, fallback]: readonly [string, string]): readonly string[] => {
+    const resolve = ([key, ...fallbacks]: readonly [string, ...string[]]): readonly string[] => {
       const value = translate(key)
       // A host with no such namespace makes translate() echo the key back.
-      return value === key || value.trim() === '' ? [fallback] : [value, fallback]
+      return value === key || value.trim() === '' ? fallbacks : [value, ...fallbacks]
     }
     return {
       capacity: resolve(HOST_LABEL_KEYS.capacity),
