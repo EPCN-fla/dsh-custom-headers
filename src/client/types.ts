@@ -1,11 +1,12 @@
 /**
  * Wire-surface types the browser half consumes: the settings Remote faces and
- * the slots/locale seams. The compilation baseline is the 0.1.5-rc.2 kernel:
- * the browser talks to the generated Typert `ctx.remote.settings` stub —
- * `describe()` takes no argument, `mutate` takes positional
- * `(ns, ops, expectedRevision)`, and every answer is the envelope
- * `{ok, value | error}` with refusals coded `settings/conflict` /
- * `settings/rejected` / `gateway/*`.
+ * the slots/locale seams. The consumed wire baseline is the 0.1.5-rc.2
+ * kernel (the development cohort compiles against the newest adapted host —
+ * currently 0.2.0-rc.2 — whose stub keeps this shape): the browser talks to
+ * the generated Typert `ctx.remote.settings` stub — `describe()` takes no
+ * argument, `mutate` takes positional `(ns, ops, expectedRevision)`, and
+ * every answer is the envelope `{ok, value | error}` with refusals coded
+ * `settings/conflict` / `settings/rejected` / `gateway/*`.
  *
  * @module dsh-custom-headers/client/types
  */
