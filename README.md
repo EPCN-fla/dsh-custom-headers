@@ -32,7 +32,7 @@ DSH 的提供方资料（provider profile）本身支持 `headers`，但它作�
 
 ## 安装
 
-要求：deepseek-harness **0.1.7-rc.1** 或 **0.1.5-rc.2**（`@deepseek-ai/dsh-*` 包 ≥ 0.1.5-rc.2；两个世代的设置机制均已适配，同一份构建在两者上运行）。
+要求：deepseek-harness **0.1.7-rc.1 / 0.1.7-rc.2** 或 **0.1.5-rc.2**（`@deepseek-ai/dsh-*` 包 ≥ 0.1.5-rc.2；两个世代的设置机制均已适配，同一份构建在两者上运行）。
 
 三种方式都通过 DSH CLI 把插件加入指定的 Profile（这里以 `web` 为例，按需替换）。本包自带 `cordis.patch.yml`，组合器会自动挂载 host 半端，并向 Web 客户端提供 `/plugins/dsh-custom-headers/client.js`——安装后无需额外的组合配置。
 

@@ -32,7 +32,7 @@ Putting these headers in the provider profile sprays them over every model on th
 
 ## Installation
 
-Requires deepseek-harness **0.1.7-rc.1** or **0.1.5-rc.2** (`@deepseek-ai/dsh-*` packages ≥ 0.1.5-rc.2; both settings generations are adapted to, and one build runs on both).
+Requires deepseek-harness **0.1.7-rc.1 / 0.1.7-rc.2** or **0.1.5-rc.2** (`@deepseek-ai/dsh-*` packages ≥ 0.1.5-rc.2; both settings generations are adapted to, and one build runs on both).
 
 All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra composition wiring needed after install.
 
