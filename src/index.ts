@@ -122,7 +122,7 @@ export const Config = Schema.object({
 
 // ---- pi-ai snapshot + settings structural faces (compile-time privacy only;
 // ---- the exact shapes are verified against dsh-v0.1.5-rc.2 and the
-// ---- dsh-v0.1.7-rc.1 – dsh-v0.2.0-rc.2 corridor, and every access fails open
+// ---- dsh-v0.1.7-rc.1 – dsh-v0.2.1-rc.2 corridor, and every access fails open
 // ---- so a kernel drift degrades to "no custom headers", never to a broken
 // ---- dispatch). ----
 
