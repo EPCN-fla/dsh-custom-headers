@@ -32,7 +32,7 @@ Putting these headers in the provider profile sprays them over every model on th
 
 ## Installation
 
-Requires a deepseek-harness **prerelease line — 0.1.5 (≥ rc.2), 0.1.7 (≥ rc.1), or 0.2.0 (≥ rc.1)**; prereleases only: the line finals (0.1.7, 0.2.0) are not admitted yet and ship line by line after re-verification. Both settings generations (the Profile-held live configuration on 0.1.7+, the classic settings section on 0.1.5) are adapted to, and one build runs on both.
+The correspondence matrix between plugin versions and DSH versions is as follows:
 
 | Plugin version | Supported DSH versions (peer-range semantics) |
 | --- | --- |
