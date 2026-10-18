@@ -22,20 +22,34 @@ const t = (key: string): string => key
  * One edit card with model rows, mimicking the official Models page DOM.
  * Rows are rendered EXPANDED by default (the official page mounts the
  * `.modelAdvanced` disclosure only while expanded); pass a `{id, collapsed}`
- * entry to render a folded row with no disclosure container.
+ * entry to render a folded row with no disclosure container. Options can add
+ * the reasoning-level controls DSH 0.2.1 renders in the same disclosure.
  */
-function editCardHtml(route: string, displayName: string, modelIds: Array<string | { id: string; collapsed: true }>): string {
+function editCardHtml(
+  route: string,
+  displayName: string,
+  modelIds: Array<string | { id: string; collapsed: true }>,
+  options?: { disclosureLabel?: string; reasoning?: boolean },
+): string {
+  const disclosureLabel = options?.disclosureLabel ?? 'Capacities'
   const rows = modelIds.map((entry, index) => {
     const id = typeof entry === 'string' ? entry : entry.id
     const collapsed = typeof entry !== 'string' && entry.collapsed === true
+    const reasoning = options?.reasoning === true
+      ? `<div class="xmodelReasoning" role="group" aria-label="Reasoning levels ${index + 1}">
+          <select aria-label="Level 1"><option>low</option></select>
+          <input aria-label="low API value" value="low" />
+        </div>`
+      : ''
+    const advanced = `<div class="xmodelAdvanced"><label class="xmodelField"><span>Context window</span><input aria-label="Context window 1" /></label>${reasoning}</div>`
     return `
     <div class="xmodelEntry">
       <div class="xmodelRow">
         <input aria-label="Model ID ${index + 1}" value="${id}" />
         <input aria-label="Display name ${index + 1}" value="" />
-        <button aria-label="Capacities ${index + 1}"></button>
+        <button aria-label="${disclosureLabel} ${index + 1}"></button>
       </div>
-      ${collapsed ? '' : '<div class="xmodelAdvanced"><label class="xmodelField"><span>Context window</span><input aria-label="Context window 1" /></label></div>'}
+      ${collapsed ? '' : advanced}
     </div>`
   }).join('')
   return `
@@ -133,6 +147,27 @@ describe('reconcile', () => {
     expect(first?.props.staged).toBe(false)
     expect(second?.props.modelId).toBe('m2')
     expect(second?.props.value).toBeUndefined()
+  })
+
+  it('mounts alongside the DSH 0.2.1 reasoning controls with the exact model identity', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'], {
+      disclosureLabel: 'Model options',
+      reasoning: true,
+    })
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.labels = () => ({ ...LABELS, capacity: ['Model options', 'Capacities'] })
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+
+    const disclosure = document.querySelector<HTMLElement>('.xmodelAdvanced')!
+    expect(disclosure.querySelector('.xmodelReasoning')).not.toBeNull()
+    expect(mounted.get(disclosure)?.props).toMatchObject({
+      route: 'acme',
+      modelId: 'm1',
+      value: 'gw',
+      staged: false,
+    })
   })
 
   it('is idempotent: a second scan with the same document re-renders nothing', async () => {
