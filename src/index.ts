@@ -152,6 +152,18 @@ interface SettingsFormsFace {
   describe(): Array<{ ns: string; value: unknown }>
 }
 
+/**
+ * The profile editor's raw user layers. Unlike the Settings form projection,
+ * these values retain plugin-owned fields that the host's Config schema does
+ * not declare (including this plugin's `headersProfile` model pick).
+ */
+interface ConfigEditorFace {
+  configuration(): Array<{
+    entry: { options: { id: string } }
+    override: Record<string, unknown>
+  }>
+}
+
 /** The union face: each member is probed before use, never assumed. */
 type SettingsFace = Partial<LegacySettingsFace & SettingsFormsFace>
 
@@ -248,6 +260,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     // Config fields; this plugin's profiles live on its own entry config and
     // pi-ai's providers ride the `llm-pi-ai` entry (the shipped row id).
     const forms = settings as SettingsFormsFace
+    const context = ctx as unknown as { get?(name: string): unknown }
+    const editor = typeof context.get === 'function'
+      ? context.get('configEditor') as ConfigEditorFace | undefined
+      : undefined
     const fiber = (ctx as { fiber?: unknown }).fiber
     if (typeof forms.configure === 'function' && fiber !== undefined) {
       // The browser half ships the custom card; no schema-derived page.
@@ -265,7 +281,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     // The volatile cell re-reads per call: a user edit reaches the next
     // request without a restart, exactly like pi-ai's own providers.
     ownProfiles = () => normalizeProfiles({ profiles: volatileRead(config.profiles) })
-    piAiSection = () => forms.describe().find(row => row.ns === PI_AI_NS)?.value
+    // The form projection strips fields unknown to the host schema. Read the
+    // raw user layer for this plugin's model pick, exactly as the browser's
+    // settings.mutate wrote it; older/minimal hosts retain the describe fallback.
+    piAiSection = () => editor?.configuration().find(row => row.entry.options.id === PI_AI_NS)?.override
+      ?? forms.describe().find(row => row.ns === PI_AI_NS)?.value
   } else if (typeof settings?.installSection === 'function') {
     // DSH 0.1.5: register the owned namespace with write-time validation: a
     // duplicate id or a Fetch-unrepresentable header name refuses the save,

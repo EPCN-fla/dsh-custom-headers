@@ -56,16 +56,21 @@ interface ModernHarness {
   setOwnProfiles(value: HeaderProfile[]): void
   /** Move the pi-ai entry's served value (a pick write, a route edit). */
   setPiValue(value: unknown): void
+  /** Move the raw user layer, including fields absent from the form projection. */
+  setPiOverride(value: unknown): void
 }
 
 /** Build a fake 0.1.7 host context: forms-style settings plus a volatile Config cell. */
 function makeModernHarness(options?: {
   profiles?: HeaderProfile[]
   piValue?: unknown
+  /** Raw user-layer value returned through ConfigEditor.configuration(). */
+  piOverride?: unknown
   /** Extra face members, e.g. a legacy installSection that must stay unused. */
   extraSettings?: Record<string, unknown>
 }): ModernHarness {
   let piValue: unknown = options?.piValue
+  let piOverride: unknown = options?.piOverride
   let ownProfiles: HeaderProfile[] = options?.profiles ?? []
   const fiber = {}
   const configured: Array<{ auto?: boolean }> = []
@@ -89,6 +94,14 @@ function makeModernHarness(options?: {
   const ctx = {
     settings,
     fiber,
+    get(name: string) {
+      if (name !== 'configEditor') return undefined
+      return {
+        configuration: () => piOverride === undefined
+          ? []
+          : [{ entry: { options: { id: PI_AI_NS } }, override: piOverride }],
+      }
+    },
     inject(names: string[], callback: (c: unknown) => void) {
       if (names[0] === 'llm') callback(ctx)
       return undefined
@@ -117,6 +130,7 @@ function makeModernHarness(options?: {
     disposers,
     setOwnProfiles(value) { ownProfiles = value },
     setPiValue(value) { piValue = value },
+    setPiOverride(value) { piOverride = value },
   }
 }
 
@@ -360,6 +374,21 @@ describe('settings forms seam (DSH 0.1.7)', () => {
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
     expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+  })
+
+  it('reads model picks from the raw override when form projection drops them', async () => {
+    const projected = { providers: { acme: { models: [{ id: 'm1' }] } } }
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: projected, piOverride: PI_SECTION })
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+
+    harness.setPiOverride(projected)
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect('headers' in modelObj).toBe(false)
   })
 
   it('follows live profile edits without a remount', async () => {
