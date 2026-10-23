@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
-import { apply, stampModelHeaders } from '../src/index.js'
+import { apply, inject as pluginInject, stampModelHeaders } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
 
@@ -95,6 +95,7 @@ function makeModernHarness(options?: {
     settings,
     fiber,
     get(name: string) {
+      if (name === 'llm') return llm
       if (name !== 'configEditor') return undefined
       return {
         configuration: () => piOverride === undefined
@@ -102,8 +103,8 @@ function makeModernHarness(options?: {
           : [{ entry: { options: { id: PI_AI_NS } }, override: piOverride }],
       }
     },
-    inject(names: string[], callback: (c: unknown) => void) {
-      if (names[0] === 'llm') callback(ctx)
+    inject(names: string[]) {
+      if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
       return undefined
     },
     effect(fn: () => unknown, _name?: string) {
@@ -162,8 +163,9 @@ function makeHarness(options?: {
   let harnessHooks: { setSource(current: () => unknown): void; onChange(): void } | undefined
   const ctx = {
     settings,
-    inject(names: string[], callback: (c: unknown) => void) {
-      if (names[0] === 'llm') callback(ctx)
+    get(name: string) { return name === 'llm' ? llm : undefined },
+    inject(names: string[]) {
+      if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
       return undefined
     },
     effect(fn: () => unknown, _name?: string) {
@@ -455,8 +457,9 @@ describe('settings forms seam (DSH 0.1.7)', () => {
     }
     const ctx = {
       settings: undefined,
-      inject(names: string[], callback: (c: unknown) => void) {
-        if (names[0] === 'llm') callback(ctx)
+      get(name: string) { return name === 'llm' ? llm : undefined },
+      inject(names: string[]) {
+        if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
         return undefined
       },
       effect(fn: () => unknown) { return fn() },
@@ -477,5 +480,6 @@ describe('constants', () => {
   it('owns the custom-headers namespace and annotates llm-pi-ai', () => {
     expect(CUSTOM_HEADERS_NS).toBe('custom-headers')
     expect(PI_AI_NS).toBe('llm-pi-ai')
+    expect(pluginInject).toEqual(['settings', 'llm'])
   })
 })

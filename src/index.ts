@@ -45,7 +45,7 @@ import {
 export const name = PLUGIN_ID
 
 /** Hard dependencies: the loader waits for these before calling apply. */
-export const inject = ['settings']
+export const inject = ['settings', 'llm']
 
 /** The branded settings namespaces this plugin owns (custom-headers) and reads (llm-pi-ai). */
 const OWN_NS = CUSTOM_HEADERS_NS as SettingsNamespace
@@ -384,12 +384,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     originals.set(candidate, { stream: originalStream, prepareCall: originalPrepareCall })
   }
 
-  // Intercept adapter registrations to wrap each adapter as it arrives.
-  // Deferred inject: the wrap lands whenever the llm service registers, and
-  // ctx.effect restores the originals on dispose (disable/HMR leaves no trace).
-  ctx.inject(['llm'], (llmCtx) => {
-    const llm = (llmCtx as unknown as { llm?: unknown }).llm as LlmServiceLike | undefined
-    if (llm === undefined || typeof llm.registerAdapter !== 'function') return
+  // Intercept adapter registrations to wrap each adapter as it arrives. The
+  // static inject above makes the service available before apply; ctx.effect
+  // restores the originals on dispose (disable/HMR leaves no trace).
+  const llm = (ctx as unknown as { llm?: unknown }).llm as LlmServiceLike | undefined
+  if (llm !== undefined && typeof llm.registerAdapter === 'function') {
     const originalRegister = llm.registerAdapter
     llm.registerAdapter = (providers: string[], adapter: unknown) => {
       wrapAdapter(adapter)
@@ -403,7 +402,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
       originals.clear()
     }, 'dsh-custom-headers: llm dispatch injection')
-  })
+  }
 }
 
 export { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
