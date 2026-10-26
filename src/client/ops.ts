@@ -127,16 +127,21 @@ export async function writeProfilePick(
  * card). Fully-blank header rows are editing artifacts and are stripped
  * before the write; everything else is written as staged (the host's
  * registration validator is the gate for invalid data, and its refusal is
- * surfaced verbatim). Retried once on a revision conflict, re-writing the
- * same staged list against the fresh revision.
+ * surfaced verbatim). Without an explicit baseline revision, a conflict is
+ * retried once against a fresh snapshot; a baselined card draft never retries
+ * over an external writer.
  * @param api - the settings Remote face.
  * @param profiles - the staged profile list.
  * @param describe - how to obtain the namespaces join (injectable for tests).
+ * @param expectedRevision - the revision the whole-list draft was based on.
+ *   When supplied, a conflict is returned without retrying stale data over a
+ *   newer external writer.
  */
 export async function writeProfiles(
   api: RemoteApi,
   profiles: readonly HeaderProfile[],
   describe: () => Promise<SettingsJoin> = () => describeNamespaces(api),
+  expectedRevision?: number,
 ): Promise<WriteReply> {
   const cleaned = profiles.map(profile => ({
     id: profile.id.trim(),
@@ -149,10 +154,10 @@ export async function writeProfiles(
       const response = await api.settings.mutate(
         CUSTOM_HEADERS_NS,
         [{ op: 'set', path: ['profiles'], value: cleaned } as unknown as SettingsPathOpView],
-        join.customHeaders.revision,
+        attempt === 0 ? expectedRevision ?? join.customHeaders.revision : join.customHeaders.revision,
       )
       if (!response.ok) {
-        if (attempt === 0 && response.error.code === 'settings/conflict') continue
+        if (expectedRevision === undefined && attempt === 0 && response.error.code === 'settings/conflict') continue
         return { ok: false, error: response.error.message }
       }
       return { ok: true }
