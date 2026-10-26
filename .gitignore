@@ -5,3 +5,4 @@ docs/dev/
 *.tgz
 .npm-cache/
 tmp/
+artifacts/

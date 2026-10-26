@@ -56,7 +56,9 @@
     "build:types": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "pack:check": "node scripts/package-artifact.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24"
@@ -86,11 +88,51 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "semver": "7.7.2",
+    "yaml": "^2.9.1"
   },
   "allowScripts": {
     "esbuild": true,
     "@google/genai": false,
     "protobufjs": false
+  },
+  "dshCompatibility": {
+    "0.1.5-rc.2": {
+      "cordis": "4.0.2",
+      "schemastery": "3.18.2"
+    },
+    "0.1.5-rc.3": {
+      "cordis": "4.0.2",
+      "schemastery": "3.18.2"
+    },
+    "0.1.7-rc.1": {
+      "cordis": "4.0.4",
+      "schemastery": "3.18.4"
+    },
+    "0.1.7-rc.2": {
+      "cordis": "4.0.4",
+      "schemastery": "3.18.4"
+    },
+    "0.2.0-rc.1": {
+      "cordis": "4.0.4",
+      "schemastery": "3.18.4"
+    },
+    "0.2.0-rc.2": {
+      "cordis": "4.0.4",
+      "schemastery": "3.18.4"
+    },
+    "0.2.1-rc.1": {
+      "cordis": "4.0.5",
+      "schemastery": "3.18.5"
+    },
+    "0.2.1-rc.2": {
+      "cordis": "4.0.5",
+      "schemastery": "3.18.5"
+    },
+    "0.2.1-rc.3": {
+      "cordis": "4.0.5",
+      "schemastery": "3.18.5"
+    }
   }
 }

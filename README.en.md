@@ -160,7 +160,9 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 npm ci --legacy-peer-deps=false  # install from the lockfile and enforce host peers
 npm run typecheck  # typecheck
 npm test           # vitest: unit / DOM injection / component / real pi-ai wire tests
+npm run test:scripts # CI matrix, failure summaries and release-gate tests
 npm run build      # emit lib/index.js (host), lib/client.js (web), type declarations
+npm run pack:check # pack and strictly consume the artifact and public types with the exact cohort
 ```
 
 All tests live in `tests/`:
@@ -175,6 +177,8 @@ All tests live in `tests/`:
 | `tests/register.spec.ts` | Card slot registration and real apply() DOM lifecycle (input rescanning, dispose invalidation) |
 | `tests/card.spec.tsx` | Profile card: expand, edit, validation gating, save/discard, load races, read-only |
 | `tests/select.spec.tsx` | Dropdown: options, writes, missing-profile display, canonical IDs, visible status, disabled states, Chinese copy |
+
+CI runs only for PRs and `v*` tag pushes. PRs read the exact DSH/Cordis/Schemastery matrix from `package.json` → `dshCompatibility` and verify Node 22 then 24 for each cohort. Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
 
 ## License
 

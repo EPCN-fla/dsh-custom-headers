@@ -160,7 +160,9 @@ llm-pi-ai:
 npm ci --legacy-peer-deps=false  # 严格按锁文件安装并校验宿主 peer
 npm run typecheck  # 类型检查
 npm test           # vitest：单元 / DOM 注入 / 组件 / 真实 pi-ai 连线测试
+npm run test:scripts # CI 矩阵、失败汇总与发布门禁测试
 npm run build      # 产出 lib/index.js（host）、lib/client.js（web）、类型声明
+npm run pack:check # 打包并以精确 cohort 严格消费产物与公开类型
 ```
 
 测试全部位于 `tests/`：
@@ -175,6 +177,8 @@ npm run build      # 产出 lib/index.js（host）、lib/client.js（web）、�
 | `tests/register.spec.ts` | 配置卡片槽位注册与真实 apply() DOM 生命周期（输入重扫描、dispose 失效） |
 | `tests/card.spec.tsx` | 配置卡片：展开、编辑、校验拦截、保存/放弃、加载竞态、只读 |
 | `tests/select.spec.tsx` | 下拉框：选项、写入、已删除配置显示、canonical ID、可见状态、禁用态、中文文案 |
+
+CI 仅在 PR 和 `v*` 标签推送时运行。PR 从 `package.json` 的 `dshCompatibility` 读取精确 DSH/Cordis/Schemastery 矩阵，逐 cohort 验证 Node 22、24；标签独立执行发布门禁、显式构建和 npm OIDC 发布，不重复运行测试。CI 不上传 artifacts 或创建 GitHub Release。
 
 ## 许可证
 
