@@ -34,12 +34,12 @@ Putting these headers in the provider profile sprays them over every model on th
 
 The correspondence matrix between plugin versions and DSH versions is as follows:
 
-| Plugin version | Supported DSH versions (peer-range semantics) |
+| Plugin version | Supported DSH versions |
 | --- | --- |
-| 0.4.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0, 0.2.1-rc.1 ~ <0.2.1 |
-| 0.3.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0 |
-| 0.2.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 |
-| 0.1.0 | ≥0.1.5-rc.2 |
+| 0.4.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
+| 0.3.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x` |
+| 0.2.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.1` |
+| 0.1.0 | `0.1.5-rc.2 / 0.1.5-rc.3` |
 
 All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra configuration wiring needed after install.
 
