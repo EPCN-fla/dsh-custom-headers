@@ -106,13 +106,21 @@ export interface SelectMountProps {
 /** Mutable scan state kept across reconcile invocations. */
 export interface ScanState {
   /** Currently mounted pickers, keyed by their disclosure-container element. */
-  mounted: Map<HTMLElement, { editor: MountedSelect; props: SelectMountProps }>
+  mounted: Map<HTMLElement, { editor: MountedSelect; props: SelectMountProps; savedModelId: string | undefined }>
+  /** Invalidation/disposal generation; stale async answers may not mount or clear newer reads. */
+  generation: number
   /** The last describe promise, folded so scans never stack reads. */
   describePromise: Promise<SettingsJoin> | undefined
 }
 
 export function createScanState(): ScanState {
-  return { mounted: new Map(), describePromise: undefined }
+  return { mounted: new Map(), describePromise: undefined, generation: 0 }
+}
+
+/** Invalidate the folded read and every completion captured before this point. */
+export function invalidateScanState(state: ScanState): void {
+  state.generation += 1
+  state.describePromise = undefined
 }
 
 /** Own-property membership over the providers dict (`in` would match prototype names). */
@@ -213,8 +221,9 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
   const labels = deps.labels()
   // Cheap DOM gate BEFORE the wire read: most mutations in a running app
   // fire while no model row exists at all.
+  const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
   const hasCapacityRows = labels.capacity.some(aria =>
-    root.querySelector(`button[aria-label^="${aria}"]`) !== null)
+    buttons.some(button => (button.getAttribute('aria-label') ?? '').startsWith(aria)))
   if (!hasCapacityRows) {
     if (state.mounted.size > 0) {
       for (const [, entry] of state.mounted) entry.editor.unmount()
@@ -226,9 +235,10 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
   // holder clears this field on rejection (retry next scan) and on pushed
   // invalidations, so a stale snapshot never outlives the change that made
   // it stale.
-  state.describePromise ??= deps.describeNamespace()
+  const generation = state.generation
+  const promise = state.describePromise ??= deps.describeNamespace()
   const run = (join: SettingsJoin): void => {
-    if (!root.isConnected) return
+    if (generation !== state.generation || !root.isConnected) return
     const providers = providersOf(join.piAi)
     const profiles = (isRecord(join.customHeaders?.value) && Array.isArray(join.customHeaders.value['profiles'])
       ? (join.customHeaders.value['profiles'] as unknown[])
@@ -236,7 +246,7 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
       .filter((raw): raw is Record<string, unknown> => isRecord(raw) && typeof raw['id'] === 'string' && raw['id'].trim().length > 0)
       .map(raw => ({ id: (raw['id'] as string).trim() }))
 
-    const found: FoundModel[] = []
+    const found = new Map<HTMLElement, FoundModel>()
     for (const aria of labels.capacity) {
       const triggers = Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
         .filter(button => (button.getAttribute('aria-label') ?? '').startsWith(aria))
@@ -251,28 +261,42 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
         if (card === undefined) continue
         const modelId = inputValueByLabel(row, labels.modelId)
         if (modelId.length === 0) continue
-        found.push({ container, row, modelId, card })
+        if (!found.has(container)) found.set(container, { container, row, modelId, card })
       }
     }
 
     // Unmount pickers whose disclosures are gone (a collapse un-renders the
     // container; a page re-render replaces it).
     for (const [key, entry] of state.mounted) {
-      if (!found.some(candidate => candidate.container === key)) {
+      if (!found.has(key)) {
         entry.editor.unmount()
         state.mounted.delete(key)
       }
     }
 
-    found.forEach((target, index) => {
+    Array.from(found.values()).forEach((target, index) => {
       const resolved = routeOfCard(target.card, providers, labels)
       if (resolved === undefined) return
       const { route, staged: routeStaged } = resolved
       const models = modelsOf(providers, route)
-      // Staged covers TWO unsaved shapes: the create card's draft route, and
-      // a typed-but-unsaved model row on a SAVED route. Writing either would
-      // bounce model-not-found, so the picker mounts disabled instead.
-      const staged = routeStaged || !models.some(model => model['id'] === target.modelId)
+      // Remember the saved identity of this DOM row. An input edit that turns
+      // m1 into another already-saved id (m2) is still an uncommitted draft of
+      // m1, not permission to write m2. A newly saved row adopts its id once it
+      // appears in the settings document.
+      const previous = state.mounted.get(target.container)
+      let existing = previous
+      if (existing !== undefined && !hasPicker(target.container, pluginId)) {
+        existing.editor.unmount()
+        state.mounted.delete(target.container)
+        existing = undefined
+      }
+      const savedModelId = previous !== undefined && previous.props.route === route
+        ? previous.savedModelId ?? (
+          previous.props.staged === true && previous.props.modelId === target.modelId
+          && models.some(model => model['id'] === target.modelId) ? target.modelId : undefined
+        )
+        : models.some(model => model['id'] === target.modelId) ? target.modelId : undefined
+      const staged = routeStaged || savedModelId === undefined || savedModelId !== target.modelId
       const value = staged ? undefined : profilePickOf(models, target.modelId)
       const next: SelectMountProps = {
         route,
@@ -284,8 +308,8 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
         readOnly: join.writable !== true,
         t: deps.t,
       }
-      const existing = state.mounted.get(target.container)
       if (existing !== undefined) {
+        existing.savedModelId = savedModelId
         if (!sameProps(existing.props, next)) {
           existing.props = next
           existing.editor.render(next)
@@ -294,13 +318,13 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
       }
       if (hasPicker(target.container, pluginId)) return
       const editor = deps.mount(target.container, next)
-      state.mounted.set(target.container, { editor, props: next })
+      state.mounted.set(target.container, { editor, props: next, savedModelId })
     })
   }
   // A rejected describe must not permanently disable the injector: clear the
   // folded promise so the next scan retries the read.
-  void state.describePromise.then(run, () => {
-    state.describePromise = undefined
+  void promise.then(run, () => {
+    if (generation === state.generation && state.describePromise === promise) state.describePromise = undefined
   })
 }
 

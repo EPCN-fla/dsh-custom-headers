@@ -15,9 +15,9 @@
  *      one immutable snapshot per configuration and sends `model.headers`
  *      on the wire for every protocol (options/profile headers win name
  *      collisions, Harness attribution wins those), so dispatch is wrapped
- *      to stamp the resolved headers onto the snapshot's model descriptor
- *      just before the adapter reads it — and to restore the descriptor's
- *      own headers when the model names no (or an unknown) profile.
+ *      to give each call its own snapshot/model copy. The shared pi-ai
+ *      descriptor is never mutated: prepared and direct streams keep the
+ *      headers resolved when that call was created, including after dispose.
  *
  * @module dsh-custom-headers
  */
@@ -45,7 +45,7 @@ import {
 export const name = PLUGIN_ID
 
 /** Hard dependencies: the loader waits for these before calling apply. */
-export const inject = ['settings']
+export const inject = ['settings', 'llm']
 
 /** The branded settings namespaces this plugin owns (custom-headers) and reads (llm-pi-ai). */
 const OWN_NS = CUSTOM_HEADERS_NS as SettingsNamespace
@@ -122,7 +122,7 @@ export const Config = Schema.object({
 
 // ---- pi-ai snapshot + settings structural faces (compile-time privacy only;
 // ---- the exact shapes are verified against dsh-v0.1.5-rc.2 and the
-// ---- dsh-v0.1.7-rc.1 – dsh-v0.2.0-rc.2 corridor, and every access fails open
+// ---- dsh-v0.1.7-rc.1 – dsh-v0.2.1-rc.2 corridor, and every access fails open
 // ---- so a kernel drift degrades to "no custom headers", never to a broken
 // ---- dispatch). ----
 
@@ -150,6 +150,18 @@ interface LegacySettingsFace {
 interface SettingsFormsFace {
   configure(presentation: { auto?: boolean }, owner?: unknown): () => void
   describe(): Array<{ ns: string; value: unknown }>
+}
+
+/**
+ * The profile editor's raw user layers. Unlike the Settings form projection,
+ * these values retain plugin-owned fields that the host's Config schema does
+ * not declare (including this plugin's `headersProfile` model pick).
+ */
+interface ConfigEditorFace {
+  configuration(): Array<{
+    entry: { options: { id: string } }
+    override: Record<string, unknown>
+  }>
 }
 
 /** The union face: each member is probed before use, never assumed. */
@@ -248,6 +260,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     // Config fields; this plugin's profiles live on its own entry config and
     // pi-ai's providers ride the `llm-pi-ai` entry (the shipped row id).
     const forms = settings as SettingsFormsFace
+    const context = ctx as unknown as { get?(name: string): unknown }
+    const editor = typeof context.get === 'function'
+      ? context.get('configEditor') as ConfigEditorFace | undefined
+      : undefined
     const fiber = (ctx as { fiber?: unknown }).fiber
     if (typeof forms.configure === 'function' && fiber !== undefined) {
       // The browser half ships the custom card; no schema-derived page.
@@ -265,7 +281,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     // The volatile cell re-reads per call: a user edit reaches the next
     // request without a restart, exactly like pi-ai's own providers.
     ownProfiles = () => normalizeProfiles({ profiles: volatileRead(config.profiles) })
-    piAiSection = () => forms.describe().find(row => row.ns === PI_AI_NS)?.value
+    // The form projection strips fields unknown to the host schema. Read the
+    // raw user layer for this plugin's model pick, exactly as the browser's
+    // settings.mutate wrote it; older/minimal hosts retain the describe fallback.
+    piAiSection = () => editor?.configuration().find(row => row.entry.options.id === PI_AI_NS)?.override
+      ?? forms.describe().find(row => row.ns === PI_AI_NS)?.value
   } else if (typeof settings?.installSection === 'function') {
     // DSH 0.1.5: register the owned namespace with write-time validation: a
     // duplicate id or a Fetch-unrepresentable header name refuses the save,
@@ -315,75 +335,144 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 
   /**
-   * Stamp the snapshot's descriptor for one route/model pair with its
-   * effective custom headers (or restore the descriptor when none apply).
-   * Fails open: any structural surprise leaves dispatch untouched.
+   * Build the private snapshot for one route/model call. Only the exact model
+   * descriptor is copied; profiles and every unrelated model retain their
+   * original identity. Methods on the models facade bind to the original
+   * collection, so private fields and internal state keep working.
    */
-  const patchModel = (adapter: PiAiAdapterLike, provider: string, modelId: string): void => {
-    try {
-      const snapshot = adapter.current?.()
-      const model = snapshot?.models?.getModel?.(provider, modelId)
-      if (!isRecord(model)) return
-      stampModelHeaders(model, headersFor(provider, modelId))
-    } catch (error) {
-      console.warn(`[dsh-custom-headers] header stamping skipped for "${provider}/${modelId}": ${error instanceof Error ? error.message : String(error)}`)
-    }
+  const snapshotFor = (
+    originalCurrent: NonNullable<PiAiAdapterLike['current']>,
+    adapter: PiAiAdapterLike,
+    provider: string,
+    modelId: string,
+  ): PiAiSnapshotLike | undefined => {
+    const snapshot = originalCurrent.call(adapter)
+    const models = snapshot?.models
+    const getModel = models?.getModel
+    if (snapshot === undefined || models === undefined || typeof getModel !== 'function') return snapshot
+    const headers = headersFor(provider, modelId)
+    if (headers === undefined || !isRecord(getModel.call(models, provider, modelId))) return snapshot
+    const facade = new Proxy(models as object, {
+      get(target, property) {
+        if (property === 'getModel') {
+          return (route: string, id: string): unknown => {
+            const resolved = getModel.call(models, route, id)
+            if (route !== provider || id !== modelId || !isRecord(resolved)) return resolved
+            return { ...resolved, headers }
+          }
+        }
+        const value = Reflect.get(target, property, target) as unknown
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    return { ...snapshot, models: facade }
   }
 
-  /** Wrapped adapters and their original dispatch entries, for fiber teardown. */
-  const originals = new Map<PiAiAdapterLike, { stream: PiAiAdapterLike['stream']; prepareCall: PiAiAdapterLike['prepareCall'] }>()
+  /** A reversible own-property method patch, including inherited/missing originals. */
+  interface MethodPatch {
+    target: HeaderCarrier
+    key: string
+    wrapped: unknown
+    own: PropertyDescriptor | undefined
+  }
+
+  const patchMethod = (target: HeaderCarrier, key: string, wrapped: unknown): MethodPatch => {
+    const own = Object.getOwnPropertyDescriptor(target, key)
+    target[key] = wrapped
+    return { target, key, wrapped, own }
+  }
+
+  /** Restore only our still-installed wrapper; never overwrite a later wrapper. */
+  const restoreMethod = (patch: MethodPatch): void => {
+    if (Object.getOwnPropertyDescriptor(patch.target, patch.key)?.value !== patch.wrapped) return
+    if (patch.own === undefined) delete patch.target[patch.key]
+    else Object.defineProperty(patch.target, patch.key, patch.own)
+  }
+
+  /** Wrapped adapters and their exact dispatch-entry patches, for fiber teardown. */
+  const originals = new Map<PiAiAdapterLike, MethodPatch[]>()
 
   /**
-   * Wrap one adapter's dispatch entries so every call re-stamps its model's
-   * headers from live settings before the adapter reads its snapshot. Only
-   * pi-ai-shaped adapters (a memoized `current()` snapshot with a models
-   * collection) are wrapped; anything else dispatches exactly as before.
+   * Wrap one pi-ai-shaped adapter. current() synchronously returns a one-call
+   * snapshot only while stream()/prepareCall() is being created; the original
+   * method then captures that snapshot using its normal, unmodified control
+   * flow. No shared descriptor is stamped and no in-flight restore is needed.
+   * @returns rollback for a registration that fails, or undefined when the
+   * adapter was already wrapped.
    */
-  const wrapAdapter = (adapter: unknown): void => {
-    if (!isRecord(adapter)) return
+  const wrapAdapter = (adapter: unknown): (() => void) | undefined => {
+    if (!isRecord(adapter)) return undefined
     const candidate = adapter as unknown as PiAiAdapterLike
-    if (originals.has(candidate)) return
-    if (typeof candidate.stream !== 'function') return
-    if (typeof candidate.current !== 'function') return
+    if (originals.has(candidate)) return undefined
+    if (typeof candidate.stream !== 'function') return undefined
+    if (typeof candidate.current !== 'function') return undefined
     const originalStream = candidate.stream
     const originalPrepareCall = candidate.prepareCall
-    candidate.stream = (options) => {
+    const originalCurrent = candidate.current
+    const target = candidate as unknown as HeaderCarrier
+    let pending: PiAiSnapshotLike | undefined
+
+    const dispatch = <T>(provider: string, modelId: string, invoke: () => T): T => {
+      let override: PiAiSnapshotLike | undefined
+      try {
+        override = snapshotFor(originalCurrent, candidate, provider, modelId)
+      } catch (error) {
+        console.warn(`[dsh-custom-headers] header snapshot skipped for "${provider}/${modelId}": ${error instanceof Error ? error.message : String(error)}`)
+      }
+      const previous = pending
+      pending = override
+      try { return invoke() } finally { pending = previous }
+    }
+
+    const patches: MethodPatch[] = []
+    patches.push(patchMethod(target, 'current', function (this: PiAiAdapterLike) {
+      return pending ?? originalCurrent.call(this)
+    }))
+    patches.push(patchMethod(target, 'stream', (options: Record<string, unknown>) => {
       const provider = options['provider']
       const model = options['model']
-      if (typeof provider === 'string' && typeof model === 'string') patchModel(candidate, provider, model)
-      return originalStream.call(candidate, options)
-    }
+      if (typeof provider !== 'string' || typeof model !== 'string') return originalStream.call(candidate, options)
+      return dispatch(provider, model, () => originalStream.call(candidate, options))
+    }))
     if (typeof originalPrepareCall === 'function') {
-      // prepareCall captures the memoized snapshot for its one-shot handle;
-      // stamping before the call lands the headers in that same snapshot.
-      candidate.prepareCall = (provider, model, signal) => {
-        patchModel(candidate, provider, model)
-        return originalPrepareCall.call(candidate, provider, model, signal)
-      }
+      patches.push(patchMethod(target, 'prepareCall', (provider: string, model: string, signal?: unknown) =>
+        dispatch(provider, model, () => originalPrepareCall.call(candidate, provider, model, signal))))
     }
-    originals.set(candidate, { stream: originalStream, prepareCall: originalPrepareCall })
+    originals.set(candidate, patches)
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      for (const patch of patches) restoreMethod(patch)
+      originals.delete(candidate)
+    }
   }
 
-  // Intercept adapter registrations to wrap each adapter as it arrives.
-  // Deferred inject: the wrap lands whenever the llm service registers, and
-  // ctx.effect restores the originals on dispose (disable/HMR leaves no trace).
-  ctx.inject(['llm'], (llmCtx) => {
-    const llm = (llmCtx as unknown as { llm?: unknown }).llm as LlmServiceLike | undefined
-    if (llm === undefined || typeof llm.registerAdapter !== 'function') return
+  // Intercept adapter registrations to wrap each adapter as it arrives. The
+  // static inject above makes the service available before apply; failed
+  // registrations roll back only a newly installed wrapper, and dispose
+  // restores the precise property descriptors without touching later wrappers.
+  const llm = (ctx as unknown as { llm?: unknown }).llm as LlmServiceLike | undefined
+  if (llm !== undefined && typeof llm.registerAdapter === 'function') {
     const originalRegister = llm.registerAdapter
-    llm.registerAdapter = (providers: string[], adapter: unknown) => {
-      wrapAdapter(adapter)
-      return originalRegister.call(llm, providers, adapter)
+    const registerTarget = llm as unknown as HeaderCarrier
+    const wrappedRegister = (providers: string[], adapter: unknown): unknown => {
+      const rollback = wrapAdapter(adapter)
+      try { return originalRegister.call(llm, providers, adapter) }
+      catch (error) {
+        rollback?.()
+        throw error
+      }
     }
+    const registerPatch = patchMethod(registerTarget, 'registerAdapter', wrappedRegister)
     ctx.effect(() => () => {
-      llm.registerAdapter = originalRegister
-      for (const [adapter, original] of originals) {
-        adapter.stream = original.stream
-        adapter.prepareCall = original.prepareCall
+      restoreMethod(registerPatch)
+      for (const patches of originals.values()) {
+        for (const patch of patches) restoreMethod(patch)
       }
       originals.clear()
     }, 'dsh-custom-headers: llm dispatch injection')
-  })
+  }
 }
 
 export { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'

@@ -22,20 +22,34 @@ const t = (key: string): string => key
  * One edit card with model rows, mimicking the official Models page DOM.
  * Rows are rendered EXPANDED by default (the official page mounts the
  * `.modelAdvanced` disclosure only while expanded); pass a `{id, collapsed}`
- * entry to render a folded row with no disclosure container.
+ * entry to render a folded row with no disclosure container. Options can add
+ * the reasoning-level controls DSH 0.2.1 renders in the same disclosure.
  */
-function editCardHtml(route: string, displayName: string, modelIds: Array<string | { id: string; collapsed: true }>): string {
+function editCardHtml(
+  route: string,
+  displayName: string,
+  modelIds: Array<string | { id: string; collapsed: true }>,
+  options?: { disclosureLabel?: string; reasoning?: boolean },
+): string {
+  const disclosureLabel = options?.disclosureLabel ?? 'Capacities'
   const rows = modelIds.map((entry, index) => {
     const id = typeof entry === 'string' ? entry : entry.id
     const collapsed = typeof entry !== 'string' && entry.collapsed === true
+    const reasoning = options?.reasoning === true
+      ? `<div class="xmodelReasoning" role="group" aria-label="Reasoning levels ${index + 1}">
+          <select aria-label="Level 1"><option>low</option></select>
+          <input aria-label="low API value" value="low" />
+        </div>`
+      : ''
+    const advanced = `<div class="xmodelAdvanced"><label class="xmodelField"><span>Context window</span><input aria-label="Context window 1" /></label>${reasoning}</div>`
     return `
     <div class="xmodelEntry">
       <div class="xmodelRow">
         <input aria-label="Model ID ${index + 1}" value="${id}" />
         <input aria-label="Display name ${index + 1}" value="" />
-        <button aria-label="Capacities ${index + 1}"></button>
+        <button aria-label="${disclosureLabel} ${index + 1}"></button>
       </div>
-      ${collapsed ? '' : '<div class="xmodelAdvanced"><label class="xmodelField"><span>Context window</span><input aria-label="Context window 1" /></label></div>'}
+      ${collapsed ? '' : advanced}
     </div>`
   }).join('')
   return `
@@ -77,9 +91,12 @@ function makeDeps(join: SettingsJoin) {
     labels: () => LABELS,
     mount(rowLine: HTMLElement, props: SelectMountProps) {
       const record: MountRecord = { props, renders: [props], unmounted: false }
+      const wrapper = document.createElement('div')
+      wrapper.dataset['plugin'] = 'dsh-custom-headers'
+      rowLine.appendChild(wrapper)
       mounted.set(rowLine, record)
       return {
-        unmount: () => { record.unmounted = true; mounted.delete(rowLine) },
+        unmount: () => { record.unmounted = true; wrapper.remove(); mounted.delete(rowLine) },
         render: (next: SelectMountProps) => { record.props = next; record.renders.push(next) },
       }
     },
@@ -135,6 +152,27 @@ describe('reconcile', () => {
     expect(second?.props.value).toBeUndefined()
   })
 
+  it('mounts alongside the DSH 0.2.1 reasoning controls with the exact model identity', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'], {
+      disclosureLabel: 'Model options',
+      reasoning: true,
+    })
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.labels = () => ({ ...LABELS, capacity: ['Model options', 'Capacities'] })
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+
+    const disclosure = document.querySelector<HTMLElement>('.xmodelAdvanced')!
+    expect(disclosure.querySelector('.xmodelReasoning')).not.toBeNull()
+    expect(mounted.get(disclosure)?.props).toMatchObject({
+      route: 'acme',
+      modelId: 'm1',
+      value: 'gw',
+      staged: false,
+    })
+  })
+
   it('is idempotent: a second scan with the same document re-renders nothing', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
@@ -145,6 +183,32 @@ describe('reconcile', () => {
     await flush()
     expect(mounted.size).toBe(1)
     expect([...mounted.values()][0]?.renders).toHaveLength(1)
+  })
+
+  it('deduplicates a row matched by repeated or aliased disclosure labels', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.labels = () => ({ ...LABELS, capacity: ['Capacities', 'Capacities'] })
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect([...mounted.values()][0]?.renders).toHaveLength(1)
+    expect([...mounted.values()][0]?.props.index).toBe(0)
+  })
+
+  it('ignores a describe result invalidated before it resolves', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    let resolve!: (join: SettingsJoin) => void
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.describeNamespace = vi.fn(() => new Promise<SettingsJoin>(done => { resolve = done }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    ;(state as unknown as { generation: number }).generation += 1
+    state.describePromise = undefined
+    resolve(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    await flush()
+    expect(mounted.size).toBe(0)
+    expect(state.mounted.size).toBe(0)
   })
 
   it('re-renders in place when the stored pick changes', async () => {
@@ -180,6 +244,71 @@ describe('reconcile', () => {
     await flush()
     expect(mounted.size).toBe(0)
     expect(state.mounted.size).toBe(0)
+  })
+
+  it('keeps a renamed row staged even when the draft id names another saved model', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    document.querySelector<HTMLInputElement>('input[aria-label^="Model ID"]')!.value = 'm2'
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    const record = [...mounted.values()][0]
+    expect(record?.props.modelId).toBe('m2')
+    expect(record?.props.staged).toBe(true)
+  })
+
+  it('adopts a newly saved row id without enabling a later unsaved rename', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m3'])
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect([...mounted.values()][0]?.props.staged).toBe(true)
+
+    deps.describeNamespace = vi.fn(async () => makeJoin({
+      providers: { acme: { models: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }] } },
+      profiles: PROFILES,
+    }))
+    state.describePromise = undefined
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect([...mounted.values()][0]?.props.staged).toBe(false)
+
+    document.querySelector<HTMLInputElement>('input[aria-label^="Model ID"]')!.value = 'm2'
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect([...mounted.values()][0]?.props.staged).toBe(true)
+  })
+
+  it('remounts when the wrapper is removed but the disclosure remains', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    const disclosure = document.querySelector<HTMLElement>('.xmodelAdvanced')!
+    const first = mounted.get(disclosure)!
+    const wrapper = disclosure.querySelector<HTMLElement>('[data-plugin]')!
+    // makeDeps does not create the DOM wrapper, so add the same guard the real mount does.
+    wrapper.remove()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect(first.unmounted).toBe(true)
+    expect(mounted.get(disclosure)).not.toBe(first)
+  })
+
+  it('accepts disclosure labels containing selector syntax', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    document.querySelector('button[aria-label^="Capacities"]')!.setAttribute('aria-label', 'Model "options 1')
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.labels = () => ({ ...LABELS, capacity: ['Model "options'] })
+    const state = createScanState()
+    expect(() => reconcile(document.body, deps, state, 'dsh-custom-headers')).not.toThrow()
+    await flush()
+    expect(mounted.size).toBe(1)
   })
 
   it('marks create-card rows staged (disabled picker, no write target)', async () => {

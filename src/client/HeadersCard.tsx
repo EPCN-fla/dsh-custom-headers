@@ -11,7 +11,7 @@
  * @module dsh-custom-headers/client/HeadersCard
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { validateProfiles, type HeaderProfile, type ProfileIssue } from '../headers.js'
 import { describeNamespaces, profilesOf, writeProfiles } from './ops.js'
@@ -83,6 +83,7 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
   const { t, api, subscribe } = props
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState<HeaderProfile[] | undefined>(undefined)
+  const [loadedRevision, setLoadedRevision] = useState<number | undefined>(undefined)
   const [writable, setWritable] = useState(true)
   const [draft, setDraft] = useState<HeaderProfile[] | null>(null)
   /**
@@ -93,20 +94,36 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
   const [openProfiles, setOpenProfiles] = useState<boolean[]>([])
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
+  const draftRef = useRef<HeaderProfile[] | null>(null)
+  const loadGeneration = useRef(0)
+  const mounted = useRef(false)
+  const reload = useRef<() => void>(() => {})
+  draftRef.current = draft
 
   // Load on first render, and follow external invalidations. A dirty draft
-  // survives a reload: the baseline moves under it and the user keeps editing.
+  // survives a reload without rebasing it: a later save still uses the
+  // draft's original revision, so an external writer causes a visible conflict
+  // instead of being silently overwritten. Discard reloads the latest baseline.
   useEffect(() => {
-    let alive = true
+    mounted.current = true
     const load = async (): Promise<void> => {
+      const generation = ++loadGeneration.current
       const join = await describeNamespaces(api)
-      if (!alive) return
-      if (join.customHeaders === undefined) return
-      setLoaded(profilesOf(join.customHeaders))
+      if (!mounted.current || generation !== loadGeneration.current) return
       setWritable(join.writable)
+      if (join.customHeaders === undefined || draftRef.current !== null) return
+      setLoaded(profilesOf(join.customHeaders))
+      setLoadedRevision(join.customHeaders.revision)
     }
+    reload.current = () => { void load() }
     void load()
-    return subscribe(() => { void load() })
+    const unsubscribe = subscribe(() => { void load() })
+    return () => {
+      mounted.current = false
+      loadGeneration.current += 1
+      reload.current = () => {}
+      unsubscribe()
+    }
   }, [api, subscribe])
 
   const current = draft ?? loaded
@@ -166,26 +183,36 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
     setSaving(true)
     setFailed(false)
     try {
-      const reply = await writeProfiles(api, current)
+      const reply = await writeProfiles(api, current, undefined, loadedRevision)
+      if (!mounted.current) return
       if (reply.ok) {
+        draftRef.current = null
         setDraft(null)
+        const generation = ++loadGeneration.current
         const join = await describeNamespaces(api)
-        if (join.customHeaders !== undefined) setLoaded(profilesOf(join.customHeaders))
+        if (!mounted.current || generation !== loadGeneration.current) return
+        setWritable(join.writable)
+        if (join.customHeaders !== undefined) {
+          setLoaded(profilesOf(join.customHeaders))
+          setLoadedRevision(join.customHeaders.revision)
+        }
       } else {
         setFailed(true)
         console.error(`[dsh-custom-headers] profile save failed: ${reply.error}`)
       }
     } finally {
-      setSaving(false)
+      if (mounted.current) setSaving(false)
     }
   }
   const onDiscard = (): void => {
+    draftRef.current = null
     setDraft(null)
     setFailed(false)
     setOpenProfiles(flags => flags.map(() => false))
+    reload.current()
   }
 
-  const blocked = !dirty || issues.length > 0 || saving
+  const blocked = !writable || !dirty || issues.length > 0 || saving
   return (
     <li className={`ch-card${open ? ' ch-card-open' : ''}`}>
       <button

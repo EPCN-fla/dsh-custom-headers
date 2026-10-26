@@ -222,7 +222,7 @@ describe('HeadersCard', () => {
     expandProfile('gw')
     type(input('ID 1'), 'renamed')
     expect(container!.textContent).toContain(t('unsaved'))
-    act(() => { buttonByText(t('discard')).click() })
+    await act(async () => { buttonByText(t('discard')).click() })
     // Discard returns to the loaded baseline and folds the profile back.
     expect(container!.textContent).not.toContain(t('unsaved'))
     expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('gw')
@@ -240,6 +240,57 @@ describe('HeadersCard', () => {
     await act(async () => { buttonByText(t('save')).click() })
     expect(container!.textContent).toContain(t('saveFailed'))
     expect(container!.textContent).toContain(t('unsaved'))
+  })
+
+  it('does not let an older load overwrite a newer invalidation snapshot', async () => {
+    const pending: Array<(value: unknown) => void> = []
+    const api: RemoteApi = {
+      settings: {
+        describe: vi.fn(() => new Promise(resolve => { pending.push(resolve) })) as never,
+        mutate: vi.fn() as never,
+      },
+    }
+    let invalidate!: () => void
+    const subscribe = (listener: () => void): (() => void) => {
+      invalidate = listener
+      return () => {}
+    }
+    const response = (id: string) => ({
+      ok: true,
+      value: {
+        namespaces: [{ ns: CUSTOM_HEADERS_NS, value: { profiles: [{ id, headers: [] }] }, revision: 1 }],
+        writable: true,
+      },
+    })
+    await renderCard({ t, api, subscribe })
+    act(() => { invalidate() })
+    await act(async () => { pending[1]?.(response('new')) })
+    expand()
+    expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('new')
+    await act(async () => { pending[0]?.(response('old')) })
+    expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('new')
+  })
+
+  it('disables Save when an invalidation makes a dirty draft read-only', async () => {
+    let writable = true
+    let invalidate!: () => void
+    const initial = [{ id: 'gw', headers: [] }]
+    const { api } = fakeApi(initial)
+    api.settings.describe = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        namespaces: [{ ns: CUSTOM_HEADERS_NS, value: { profiles: initial }, revision: 1 }],
+        writable,
+      } as never,
+    }))
+    await renderCard({ t, api, subscribe: (listener) => { invalidate = listener; return () => {} } })
+    expand()
+    expandProfile('gw')
+    type(input('ID 1'), 'draft')
+    expect(buttonByText(t('save')).disabled).toBe(false)
+    writable = false
+    await act(async () => { invalidate() })
+    expect(buttonByText(t('save')).disabled).toBe(true)
   })
 
   it('renders read-only when the document refuses writes', async () => {

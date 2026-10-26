@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
-import { apply, stampModelHeaders } from '../src/index.js'
+import { apply, inject as pluginInject, stampModelHeaders } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
 
@@ -56,16 +56,21 @@ interface ModernHarness {
   setOwnProfiles(value: HeaderProfile[]): void
   /** Move the pi-ai entry's served value (a pick write, a route edit). */
   setPiValue(value: unknown): void
+  /** Move the raw user layer, including fields absent from the form projection. */
+  setPiOverride(value: unknown): void
 }
 
 /** Build a fake 0.1.7 host context: forms-style settings plus a volatile Config cell. */
 function makeModernHarness(options?: {
   profiles?: HeaderProfile[]
   piValue?: unknown
+  /** Raw user-layer value returned through ConfigEditor.configuration(). */
+  piOverride?: unknown
   /** Extra face members, e.g. a legacy installSection that must stay unused. */
   extraSettings?: Record<string, unknown>
 }): ModernHarness {
   let piValue: unknown = options?.piValue
+  let piOverride: unknown = options?.piOverride
   let ownProfiles: HeaderProfile[] = options?.profiles ?? []
   const fiber = {}
   const configured: Array<{ auto?: boolean }> = []
@@ -89,8 +94,17 @@ function makeModernHarness(options?: {
   const ctx = {
     settings,
     fiber,
-    inject(names: string[], callback: (c: unknown) => void) {
-      if (names[0] === 'llm') callback(ctx)
+    get(name: string) {
+      if (name === 'llm') return llm
+      if (name !== 'configEditor') return undefined
+      return {
+        configuration: () => piOverride === undefined
+          ? []
+          : [{ entry: { options: { id: PI_AI_NS } }, override: piOverride }],
+      }
+    },
+    inject(names: string[]) {
+      if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
       return undefined
     },
     effect(fn: () => unknown, _name?: string) {
@@ -117,6 +131,7 @@ function makeModernHarness(options?: {
     disposers,
     setOwnProfiles(value) { ownProfiles = value },
     setPiValue(value) { piValue = value },
+    setPiOverride(value) { piOverride = value },
   }
 }
 
@@ -124,6 +139,7 @@ function makeModernHarness(options?: {
 function makeHarness(options?: {
   profiles?: HeaderProfile[]
   piSection?: unknown
+  registrationError?: Error
 }): Harness {
   let section: { profiles: HeaderProfile[] } = { profiles: options?.profiles ?? [] }
   let piSection: unknown = options?.piSection
@@ -131,6 +147,7 @@ function makeHarness(options?: {
   const disposers: Array<() => void> = []
   const llm = {
     registerAdapter(_providers: string[], _adapter: unknown) {
+      if (options?.registrationError !== undefined) throw options.registrationError
       return { replaced: [] as string[] }
     },
   }
@@ -148,8 +165,9 @@ function makeHarness(options?: {
   let harnessHooks: { setSource(current: () => unknown): void; onChange(): void } | undefined
   const ctx = {
     settings,
-    inject(names: string[], callback: (c: unknown) => void) {
-      if (names[0] === 'llm') callback(ctx)
+    get(name: string) { return name === 'llm' ? llm : undefined },
+    inject(names: string[]) {
+      if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
       return undefined
     },
     effect(fn: () => unknown, _name?: string) {
@@ -183,15 +201,27 @@ function makePiAdapter(models: Record<string, Record<string, unknown>>) {
       },
     },
   }
+  const streamWithSnapshot = async function* (
+    streamed: Array<{ options: Record<string, unknown>; headers: unknown }>,
+    options: Record<string, unknown>,
+    captured: typeof snapshot,
+  ) {
+    const resolved = captured.models.getModel(String(options['provider']), String(options['model']))
+    streamed.push({ options, headers: resolved?.['headers'] })
+    yield { type: 'chunk' }
+  }
   return {
-    streamed: [] as Array<Record<string, unknown>>,
+    streamed: [] as Array<{ options: Record<string, unknown>; headers: unknown }>,
     current() { return snapshot },
-    async *stream(options: Record<string, unknown>) {
-      this.streamed.push(options)
-      yield { type: 'chunk' }
+    stream(options: Record<string, unknown>) {
+      return streamWithSnapshot(this.streamed, options, this.current())
     },
     async prepareCall(provider: string, model: string) {
-      return { model: { provider, id: model }, stream: () => this.stream({ provider, model }) }
+      const captured = this.current()
+      return {
+        model: { provider, id: model },
+        stream: () => streamWithSnapshot(this.streamed, { provider, model }, captured),
+      }
     },
   }
 }
@@ -223,8 +253,8 @@ describe('namespace registration', () => {
   })
 })
 
-describe('dispatch header stamping', () => {
-  it('stamps the picked profile onto the resolved model at stream time', async () => {
+describe('dispatch header snapshots', () => {
+  it('applies the picked profile without mutating the resolved model', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
     apply(harness.ctx, {})
     const modelObj: Record<string, unknown> = { id: 'm1' }
@@ -232,21 +262,24 @@ describe('dispatch header stamping', () => {
     harness.llm.registerAdapter(['acme'], adapter)
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
   })
 
-  it('stamps through prepareCall (the captured-snapshot dispatch path)', async () => {
+  it('applies headers through the captured-snapshot dispatch path', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
     apply(harness.ctx, {})
     const modelObj: Record<string, unknown> = { id: 'm1' }
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)
 
-    await adapter.prepareCall('acme', 'm1')
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    const call = await adapter.prepareCall('acme', 'm1')
+    for await (const _ of call.stream()) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
   })
 
-  it('leaves an unpicked model bare, and restores a descriptor it stamped before', async () => {
+  it('leaves shared descriptors bare as picks change', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
     apply(harness.ctx, {})
     const picked: Record<string, unknown> = { id: 'm1' }
@@ -259,13 +292,15 @@ describe('dispatch header stamping', () => {
 
     // The pick is removed from settings: the next call restores the descriptor.
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(picked['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in picked).toBe(false)
     harness.setPiSection({ providers: { acme: { models: [{ id: 'm1' }] } } })
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
     expect('headers' in picked).toBe(false)
   })
 
-  it('restores catalog-carried headers when the pick disappears', () => {
+  it('preserves catalog-carried headers as picks change', () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
     apply(harness.ctx, {})
     const catalogHeaders = { 'x-catalog': 'shipped' }
@@ -274,23 +309,27 @@ describe('dispatch header stamping', () => {
     harness.llm.registerAdapter(['acme'], adapter)
 
     void adapter.stream({ provider: 'acme', model: 'm1' })[Symbol.asyncIterator]().next()
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed[0]?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect(modelObj['headers']).toBe(catalogHeaders)
     harness.setPiSection({ providers: { acme: { models: [{ id: 'm1' }] } } })
     void adapter.stream({ provider: 'acme', model: 'm1' })[Symbol.asyncIterator]().next()
+    expect(adapter.streamed[1]?.headers).toBe(catalogHeaders)
     expect(modelObj['headers']).toBe(catalogHeaders)
   })
 
-  it('falls back to no stamping when the picked profile vanishes', async () => {
+  it('falls back to catalog behavior when the picked profile vanishes', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
     apply(harness.ctx, {})
     const modelObj: Record<string, unknown> = { id: 'm1' }
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
 
     harness.setSection({ profiles: [] })
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
     expect('headers' in modelObj).toBe(false)
   })
 
@@ -304,7 +343,8 @@ describe('dispatch header stamping', () => {
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-ok': '1' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-ok': '1' })
+    expect('headers' in modelObj).toBe(false)
   })
 
   it('does not wrap adapters without a pi-ai snapshot seam', () => {
@@ -314,6 +354,83 @@ describe('dispatch header stamping', () => {
     const foreign = { stream }
     harness.llm.registerAdapter(['deepseek-official'], foreign)
     expect(foreign.stream).toBe(stream)
+  })
+
+  it('freezes headers per prepared call when profiles change between interleaved calls', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
+    apply(harness.ctx, {})
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    const first = await adapter.prepareCall('acme', 'm1')
+    harness.setSection({ profiles: [{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'other' }] }] })
+    const second = await adapter.prepareCall('acme', 'm1')
+    for await (const _ of first.stream()) { /* drain */ }
+    for await (const _ of second.stream()) { /* drain */ }
+
+    expect(adapter.streamed.map(call => call.headers)).toEqual([
+      { 'x-tenant': 'acme' },
+      { 'x-tenant': 'other' },
+    ])
+    expect('headers' in modelObj).toBe(false)
+  })
+
+  it('freezes direct streams before delayed iteration', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
+    apply(harness.ctx, {})
+    const adapter = makePiAdapter({ 'acme/m1': { id: 'm1' } })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    const first = adapter.stream({ provider: 'acme', model: 'm1' })[Symbol.asyncIterator]()
+    harness.setSection({ profiles: [{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'other' }] }] })
+    const second = adapter.stream({ provider: 'acme', model: 'm1' })[Symbol.asyncIterator]()
+    await first.next()
+    await second.next()
+
+    expect(adapter.streamed.map(call => call.headers)).toEqual([
+      { 'x-tenant': 'acme' },
+      { 'x-tenant': 'other' },
+    ])
+  })
+
+  it('does not leave custom headers on the shared descriptor after dispose', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piSection: PI_SECTION })
+    apply(harness.ctx, {})
+    const catalogHeaders = { 'x-catalog': 'shipped' }
+    const modelObj: Record<string, unknown> = { id: 'm1', headers: catalogHeaders }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+    const prepared = await adapter.prepareCall('acme', 'm1')
+
+    for (const dispose of harness.disposers) dispose()
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(modelObj['headers']).toBe(catalogHeaders)
+    expect(adapter.streamed.at(-1)?.headers).toBe(catalogHeaders)
+
+    // An already prepared call retains its own frozen snapshot, not shared state.
+    for await (const _ of prepared.stream()) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect(modelObj['headers']).toBe(catalogHeaders)
+  })
+
+  it('rolls back a newly wrapped adapter when registration fails', () => {
+    const harness = makeHarness({ registrationError: new Error('duplicate') })
+    apply(harness.ctx, {})
+    const adapter = makePiAdapter({})
+    const before = Object.getOwnPropertyDescriptors(adapter)
+    expect(() => harness.llm.registerAdapter(['acme'], adapter)).toThrow('duplicate')
+    expect(Object.getOwnPropertyDescriptors(adapter)).toEqual(before)
+  })
+
+  it('restores the exact property shape of inherited and absent methods', () => {
+    const harness = makeHarness()
+    apply(harness.ctx, {})
+    const adapter = Object.assign(Object.create(makePiAdapter({})), { ownMarker: true })
+    const before = Object.getOwnPropertyDescriptors(adapter)
+    harness.llm.registerAdapter(['acme'], adapter)
+    for (const dispose of harness.disposers) dispose()
+    expect(Object.getOwnPropertyDescriptors(adapter)).toEqual(before)
   })
 
   it('restores registerAdapter and the adapter entries on dispose', () => {
@@ -351,7 +468,7 @@ describe('stampModelHeaders', () => {
 })
 
 describe('settings forms seam (DSH 0.1.7)', () => {
-  it('registers the page policy and stamps from describe() plus the volatile cell', async () => {
+  it('registers the page policy and applies describe() plus the volatile cell', async () => {
     const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
     expect(harness.configured).toEqual([{ auto: false }])
     const modelObj: Record<string, unknown> = { id: 'm1' }
@@ -359,7 +476,25 @@ describe('settings forms seam (DSH 0.1.7)', () => {
     harness.llm.registerAdapter(['acme'], adapter)
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
+  })
+
+  it('reads model picks from the raw override when form projection drops them', async () => {
+    const projected = { providers: { acme: { models: [{ id: 'm1' }] } } }
+    const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: projected, piOverride: PI_SECTION })
+    const modelObj: Record<string, unknown> = { id: 'm1' }
+    const adapter = makePiAdapter({ 'acme/m1': modelObj })
+    harness.llm.registerAdapter(['acme'], adapter)
+
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
+
+    harness.setPiOverride(projected)
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
+    expect('headers' in modelObj).toBe(false)
   })
 
   it('follows live profile edits without a remount', async () => {
@@ -369,25 +504,29 @@ describe('settings forms seam (DSH 0.1.7)', () => {
     harness.llm.registerAdapter(['acme'], adapter)
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
 
     // A user edit to the volatile profiles field reaches the very next call.
     harness.setOwnProfiles([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'edited' }] }])
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'edited' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'edited' })
+    expect('headers' in modelObj).toBe(false)
   })
 
-  it('restores the descriptor when the pick disappears from the served entry', async () => {
+  it('leaves the descriptor unchanged when the pick disappears', async () => {
     const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
     const modelObj: Record<string, unknown> = { id: 'm1' }
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(modelObj['headers']).toEqual({ 'x-tenant': 'acme' })
+    expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
+    expect('headers' in modelObj).toBe(false)
 
     harness.setPiValue({ providers: { acme: { models: [{ id: 'm1' }] } } })
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
     expect('headers' in modelObj).toBe(false)
   })
 
@@ -426,8 +565,9 @@ describe('settings forms seam (DSH 0.1.7)', () => {
     }
     const ctx = {
       settings: undefined,
-      inject(names: string[], callback: (c: unknown) => void) {
-        if (names[0] === 'llm') callback(ctx)
+      get(name: string) { return name === 'llm' ? llm : undefined },
+      inject(names: string[]) {
+        if (names[0] === 'llm') throw new Error('dynamic llm injection must not be used')
         return undefined
       },
       effect(fn: () => unknown) { return fn() },
@@ -448,5 +588,6 @@ describe('constants', () => {
   it('owns the custom-headers namespace and annotates llm-pi-ai', () => {
     expect(CUSTOM_HEADERS_NS).toBe('custom-headers')
     expect(PI_AI_NS).toBe('llm-pi-ai')
+    expect(pluginInject).toEqual(['settings', 'llm'])
   })
 })

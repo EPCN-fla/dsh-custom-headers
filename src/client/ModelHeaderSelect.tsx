@@ -8,7 +8,7 @@
  * @module dsh-custom-headers/client/ModelHeaderSelect
  */
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChKey } from './locales.js'
 import type { WriteReply } from './types.js'
@@ -46,14 +46,20 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
   const { t } = props
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
-  const value = props.value ?? ''
-  const missing = value.length > 0 && !props.profiles.some(profile => profile.id === value)
+  const statusId = useId()
+  const stored = props.value ?? ''
+  const canonical = props.profiles.find(profile => profile.id.trim().toLowerCase() === stored.trim().toLowerCase())
+  const value = canonical?.id ?? stored
+  const missing = stored.trim().length > 0 && canonical === undefined
   const disabled = props.readOnly || props.staged === true || saving
   const title = props.staged === true
     ? t('modelPickerSaveFirst')
     : failed !== null
       ? `${t('modelPickerWriteFailed')}: ${failed}`
       : t('modelPicker')
+  const status = props.staged === true
+    ? t('modelPickerSaveFirst')
+    : failed !== null ? `${t('modelPickerWriteFailed')}: ${failed}` : null
 
   const onChange = async (next: string): Promise<void> => {
     setSaving(true)
@@ -78,6 +84,7 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
         className="ch-select-input"
         aria-label={`${t('modelPicker')}: ${props.modelId}`}
         title={title}
+        aria-describedby={status === null ? undefined : statusId}
         value={value}
         disabled={disabled}
         onChange={(event) => { void onChange(event.target.value) }}
@@ -92,6 +99,7 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
           ? <option value={value}>{value} (?)</option>
           : null}
       </select>
+      {status === null ? null : <span id={statusId} className="ch-select-status" role="status">{status}</span>}
     </span>
   )
 }

@@ -197,6 +197,24 @@ describe('writeProfiles', () => {
     expect(reply).toEqual({ ok: false, error: 'no-namespace' })
   })
 
+  it('refuses to retry a stale whole-list draft over a newer external revision', async () => {
+    const { api, state } = fakeApi({
+      [CUSTOM_HEADERS_NS]: { value: { profiles: [{ id: 'original', headers: [] }] } },
+    })
+    let attempts = 0
+    api.settings.mutate = (async (ns: string, ops: never[], rev?: number) => {
+      attempts += 1
+      const entry = state.get(CUSTOM_HEADERS_NS)!
+      entry.value = { profiles: [{ id: 'external', headers: [] }] }
+      entry.revision += 1
+      return { ok: false, error: { code: 'settings/conflict', message: 'conflict' } }
+    }) as never
+    const reply = await writeProfiles(api, [{ id: 'draft', headers: [] }], undefined, 1)
+    expect(reply).toEqual({ ok: false, error: 'conflict' })
+    expect(attempts).toBe(1)
+    expect(state.get(CUSTOM_HEADERS_NS)?.value).toEqual({ profiles: [{ id: 'external', headers: [] }] })
+  })
+
   it('surfaces the host validator refusal verbatim', async () => {
     const { api } = fakeApi({ [CUSTOM_HEADERS_NS]: { value: { profiles: [] } } })
     api.settings.mutate = (async () => ({

@@ -32,13 +32,14 @@ Putting these headers in the provider profile sprays them over every model on th
 
 ## Installation
 
-Requires a deepseek-harness **prerelease line — 0.1.5 (≥ rc.2), 0.1.7 (≥ rc.1), or 0.2.0 (≥ rc.1)**; prereleases only: the line finals (0.1.7, 0.2.0) are not admitted yet and ship line by line after re-verification. Both settings generations (the Profile-held live configuration on 0.1.7+, the classic settings section on 0.1.5) are adapted to, and one build runs on both.
+The correspondence matrix between plugin versions and DSH versions is as follows:
 
-| Plugin version | Supported DSH versions (peer-range semantics) |
+| Plugin version | Supported DSH versions |
 | --- | --- |
-| 0.3.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 ~ <0.1.7, 0.2.0-rc.1 ~ <0.2.0 |
-| 0.2.0 | 0.1.5-rc.2 ~ <0.1.5, 0.1.7-rc.1 |
-| 0.1.0 | ≥0.1.5-rc.2 |
+| 0.4.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
+| 0.3.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x` |
+| 0.2.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.1` |
+| 0.1.0 | `0.1.5-rc.2 / 0.1.5-rc.3` |
 
 All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra configuration wiring needed after install.
 
@@ -148,17 +149,20 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 
 - Only calls served by the **pi-ai adapter** (`llm-pi-ai` provider routes, including hand-declared custom providers) are affected; other adapter families (e.g. `deepseek-official`) do not pass through this dispatch path and picks are not applied to them.
 - Headers apply to the model's **actual LLM requests**. Configuration-time discovery ("fetch model list from the endpoint") keeps using the provider profile's own headers and does not attach per-model picks.
-- The dropdown is injected into the official Models page's per-row Model options disclosure (called Capacities on DSH 0.1.5) through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the 0.1.5-rc.2 and 0.1.7-rc.1 – 0.2.0-rc.2 page structures (identical across versions; the disclosure label is resolved per generation through the host's dictionary): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
+- The dropdown is injected into the official Models page's per-row Model options disclosure (called Capacities on DSH 0.1.5) through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the 0.1.5-rc.2 and 0.1.7-rc.1 – 0.2.1-rc.3 page structures (the disclosure label is resolved per generation through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
 - (DSH 0.1.5 only) The card's position on the Plugin configuration tab depends on the shipped web-search card's registration: this plugin waits for it on the slot ledger before registering (with a ~10s fallback timeout); if a deployment strips the shipped plugins package, the card still registers, at whatever position the ledger has then. On DSH 0.1.7+ the card lives on this package's detail page and has no position dependency.
+- The picker writes only explicit `models` rows in `llm-pi-ai`. Rows inherited entirely from an installed catalog without a writable explicit model entry remain disabled; the plugin does not guess a `modelOverrides` write target.
 - Repeated header names within one profile resolve last-wins, case-insensitively (Fetch `Headers` semantics).
 
 ## Development
 
 ```sh
-npm install        # install dependencies (.npmrc enables legacy-peer-deps)
+npm ci --legacy-peer-deps=false  # install from the lockfile and enforce host peers
 npm run typecheck  # typecheck
 npm test           # vitest: unit / DOM injection / component / real pi-ai wire tests
+npm run test:scripts # CI matrix, failure summaries and release-gate tests
 npm run build      # emit lib/index.js (host), lib/client.js (web), type declarations
+npm run pack:check # pack and strictly consume the artifact and public types with the exact cohort
 ```
 
 All tests live in `tests/`:
@@ -166,13 +170,15 @@ All tests live in `tests/`:
 | File | Coverage |
 |---|---|
 | `tests/headers.spec.ts` | Validation, normalization, resolution, and model-row pick reading (pure logic) |
-| `tests/host.spec.ts` | Both settings generations (0.1.5 namespace registration / 0.1.7 volatile config), adapter wrapping, header stamping/restoration, teardown |
+| `tests/host.spec.ts` | Both settings generations (0.1.5 namespace registration / 0.1.7 volatile config), adapter wrapping, per-call snapshot isolation, interleaving, registration rollback, teardown |
 | `tests/pi-ai-wire.spec.ts` | Real pi-ai openai-completions wire: `model.headers` reach the request, collision precedence, auth intact |
-| `tests/ops.spec.ts` | Client settings seams (conflict retry, refusal pass-through, blank-row cleanup) |
-| `tests/injector.spec.ts` | Model-row discovery, idempotent injection, staged rows, language anchors |
-| `tests/register.spec.ts` | Card registration across both slot generations (0.1.5 `settings.plugin.item` / 0.1.7 `plugins.bundle.config`) |
-| `tests/card.spec.tsx` | Profile card: expand, edit, validation gating, save/discard, read-only |
-| `tests/select.spec.tsx` | Dropdown: options, writes, missing-profile display, disabled states, Chinese copy |
+| `tests/ops.spec.ts` | Client settings seams (pick conflict retry, whole-draft CAS, refusal pass-through, blank-row cleanup) |
+| `tests/injector.spec.ts` | Model-row discovery, idempotent/self-healing injection, async generations, draft identity, language anchors |
+| `tests/register.spec.ts` | Card slot registration and real apply() DOM lifecycle (input rescanning, dispose invalidation) |
+| `tests/card.spec.tsx` | Profile card: expand, edit, validation gating, save/discard, load races, read-only |
+| `tests/select.spec.tsx` | Dropdown: options, writes, missing-profile display, canonical IDs, visible status, disabled states, Chinese copy |
+
+CI runs only for PRs and `v*` tag pushes. PRs read the exact DSH/Cordis/Schemastery matrix from `package.json` → `dshCompatibility` and verify Node 22 then 24 for each cohort. Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
 
 ## License
 
