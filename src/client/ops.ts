@@ -9,7 +9,7 @@
 
 import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS } from '../constants.js'
 import { isRecord, normalizeProfiles, type HeaderProfile } from '../headers.js'
-import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SettingsPathOpView } from '@deepseek-ai/dsh-settings/types'
 import type { RemoteApi, SettingsJoin, SettingsNamespaceView, WriteReply } from './types.js'
 
 /**

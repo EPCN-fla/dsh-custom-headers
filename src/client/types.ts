@@ -2,7 +2,7 @@
  * Wire-surface types the browser half consumes: the settings Remote faces and
  * the slots/locale seams. The consumed wire baseline is the 0.1.5-rc.2
  * kernel (the development cohort compiles against the newest adapted host —
- * currently 0.2.1-rc.2 — whose stub keeps this shape): the browser talks to
+ * currently 0.2.1-rc.3 — whose stub keeps this shape): the browser talks to
  * the generated Typert `ctx.remote.settings` stub — `describe()` takes no
  * argument, `mutate` takes positional `(ns, ops, expectedRevision)`, and
  * every answer is the envelope `{ok, value | error}` with refusals coded
@@ -11,7 +11,7 @@
  * @module dsh-custom-headers/client/types
  */
 
-import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-settings/types'
 
 /** The settings answer envelope, in the official `RemoteResult` shape. */
 export type SettingsRemoteResult<T> =
