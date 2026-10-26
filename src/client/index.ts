@@ -31,7 +31,7 @@ import { createRoot } from 'react-dom/client'
 import { HeadersCard } from './HeadersCard.tsx'
 import { LocaleRefresh, type LocaleFace } from './LocaleRefresh.tsx'
 import { ModelHeaderSelect } from './ModelHeaderSelect.tsx'
-import { createScanState, reconcile, type HostLabels, type SelectMountProps } from './injector.ts'
+import { createScanState, invalidateScanState, reconcile, type HostLabels, type SelectMountProps } from './injector.ts'
 import { en, zh, type ChKey } from './locales.ts'
 import { describeNamespaces, writeProfilePick } from './ops.ts'
 import { STYLES } from './styles.ts'
@@ -149,7 +149,7 @@ export function apply(ctx: ClientContext): void {
     const resolve = ([key, ...fallbacks]: readonly [string, ...string[]]): readonly string[] => {
       const value = translate(key)
       // A host with no such namespace makes translate() echo the key back.
-      return value === key || value.trim() === '' ? fallbacks : [value, ...fallbacks]
+      return Array.from(new Set(value === key || value.trim() === '' ? fallbacks : [value, ...fallbacks]))
     }
     return {
       capacity: resolve(HOST_LABEL_KEYS.capacity),
@@ -299,7 +299,7 @@ export function apply(ctx: ClientContext): void {
           }
           renderSelect(props)
           return {
-            unmount: () => { reactRoot.unmount() },
+            unmount: () => { reactRoot.unmount(); wrapper.remove() },
             render: renderSelect,
           }
         },
@@ -310,6 +310,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     observer = new MutationObserver(() => { scheduleScan() })
     observer.observe(document.body, { childList: true, subtree: true })
+    document.addEventListener('input', scheduleScan, true)
+    document.addEventListener('change', scheduleScan, true)
     scheduleScan()
     return () => {
       if (scanTimer !== undefined) {
@@ -318,6 +320,9 @@ export function apply(ctx: ClientContext): void {
       }
       observer?.disconnect()
       observer = undefined
+      document.removeEventListener('input', scheduleScan, true)
+      document.removeEventListener('change', scheduleScan, true)
+      invalidateScanState(scanState)
       // Orphaned pickers must not outlive the fiber: on plugin disable or
       // HMR they would keep rendering with a stale api face, failing every
       // write visibly. Unmount every React root this plugin created.
@@ -332,7 +337,7 @@ export function apply(ctx: ClientContext): void {
   // invalidated first so no scan reads a revision the change left behind.
   ctx.effect(() => {
     const refresh = (): void => {
-      scanState.describePromise = undefined
+      invalidateScanState(scanState)
       scheduleScan()
     }
     const disposers = [
@@ -353,7 +358,7 @@ export type { ChKey }
 export { HeadersCard } from './HeadersCard.tsx'
 export { ModelHeaderSelect } from './ModelHeaderSelect.tsx'
 export type { ModelHeaderSelectProps } from './ModelHeaderSelect.tsx'
-export { createScanState, reconcile, routeOfCard } from './injector.ts'
+export { createScanState, invalidateScanState, reconcile, routeOfCard } from './injector.ts'
 export type { HostLabels, InjectorDeps, MountedSelect, ScanState, SelectMountProps } from './injector.ts'
 export * from './ops.ts'
 export * from './types.ts'
