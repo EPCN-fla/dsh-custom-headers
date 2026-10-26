@@ -149,14 +149,15 @@ llm-pi-ai:
 
 - 仅对 **pi-ai 适配器**（`llm-pi-ai` 提供方路由，含手工声明的自定义提供方）的调用生效；其他适配器家族（如 `deepseek-official`）不经过该连线路径，选择不会被应用。
 - 请求头应用于模型的**实际 LLM 请求**；「从端点获取模型列表」等配置期发现请求沿用提供方资料自身的头，不附加模型级配置。
-- 下拉框通过 DOM 锚定注入到官方模型页面每行的「模型选项」折叠区内（0.1.5 称为「容量」；官方槽位没有模型行级扩展点）。已按 0.1.5-rc.2、0.1.7-rc.1 – 0.2.1-rc.2 的页面结构（折叠区名称经宿主词典逐代解析，区内控件可随宿主能力增减）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
+- 下拉框通过 DOM 锚定注入到官方模型页面每行的「模型选项」折叠区内（0.1.5 称为「容量」；官方槽位没有模型行级扩展点）。已按 0.1.5-rc.2、0.1.7-rc.1 – 0.2.1-rc.3 的页面结构（折叠区名称经宿主词典逐代解析，区内控件可随宿主能力增减）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
 - （仅 DSH 0.1.5）「插件配置」中的卡片位置依赖内置「网页搜索」卡片的注册：本插件会等待其出现在槽位账本后再注册（约 10 秒兜底超时）；若部署裁剪了内置插件包导致其不存在，本卡片仍会注册，但位置取决于当时的账本顺序。DSH 0.1.7+ 的卡片位于本包详情页，无位置依赖。
+- 选择器只写入 `llm-pi-ai` 中显式 `models` 行；完全继承 installed catalog、但没有可写显式模型行的条目会保持禁用，当前不通过 `modelOverrides` 猜测写入目标。
 - 同名请求头在一个配置内重复出现时，按大小写不敏感「后者覆盖前者」处理（Fetch `Headers` 语义）。
 
 ## 开发
 
 ```sh
-npm install        # 安装依赖（.npmrc 已启用 legacy-peer-deps）
+npm ci --legacy-peer-deps=false  # 严格按锁文件安装并校验宿主 peer
 npm run typecheck  # 类型检查
 npm test           # vitest：单元 / DOM 注入 / 组件 / 真实 pi-ai 连线测试
 npm run build      # 产出 lib/index.js（host）、lib/client.js（web）、类型声明
@@ -167,13 +168,13 @@ npm run build      # 产出 lib/index.js（host）、lib/client.js（web）、�
 | 文件 | 覆盖 |
 |---|---|
 | `tests/headers.spec.ts` | 校验、归一化、解析、模型行选择读取等纯逻辑 |
-| `tests/host.spec.ts` | 设置 seam 双世代（0.1.5 命名空间注册 / 0.1.7 volatile 配置）、适配器包装、请求头盖印与还原、卸载清理 |
+| `tests/host.spec.ts` | 设置 seam 双世代（0.1.5 命名空间注册 / 0.1.7 volatile 配置）、适配器包装、每调用 snapshot 隔离、交错调用、注册失败回滚与卸载清理 |
 | `tests/pi-ai-wire.spec.ts` | 真实 pi-ai openai-completions 连线：`model.headers` 到达请求、冲突优先级、认证保持 |
-| `tests/ops.spec.ts` | 客户端设置读写（冲突重试、拒绝透传、空行清理） |
-| `tests/injector.spec.ts` | 模型行发现、幂等注入、staged 行、语言锚点 |
-| `tests/register.spec.ts` | 配置卡片在两个世代的槽位注册（0.1.5 `settings.plugin.item` / 0.1.7 `plugins.bundle.config`） |
-| `tests/card.spec.tsx` | 配置卡片：展开、编辑、校验拦截、保存/放弃、只读 |
-| `tests/select.spec.tsx` | 下拉框：选项、写入、已删除配置显示、禁用态、中文文案 |
+| `tests/ops.spec.ts` | 客户端设置读写（选择冲突重试、整表草稿 CAS、拒绝透传、空行清理） |
+| `tests/injector.spec.ts` | 模型行发现、幂等/自愈注入、异步代次、草稿身份、语言锚点 |
+| `tests/register.spec.ts` | 配置卡片槽位注册与真实 apply() DOM 生命周期（输入重扫描、dispose 失效） |
+| `tests/card.spec.tsx` | 配置卡片：展开、编辑、校验拦截、保存/放弃、加载竞态、只读 |
+| `tests/select.spec.tsx` | 下拉框：选项、写入、已删除配置显示、canonical ID、可见状态、禁用态、中文文案 |
 
 ## 许可证
 
