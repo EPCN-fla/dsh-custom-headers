@@ -94,6 +94,12 @@ describe('ModelHeaderSelect', () => {
     expect(props.onPick).toHaveBeenCalledWith('acme', 'm1', null)
   })
 
+  it.each(['GW', '  gw  '])('shows the canonical profile for a valid non-canonical pick %j', async (value) => {
+    await renderSelect(baseProps({ value }))
+    expect(select().value).toBe('gw')
+    expect(container!.textContent).not.toContain('(?)')
+  })
+
   it('keeps a vanished profile visible and correctable', async () => {
     await renderSelect(baseProps({ value: 'deleted-profile' }))
     const labels = Array.from(select().options).map(option => option.textContent)
@@ -105,6 +111,7 @@ describe('ModelHeaderSelect', () => {
     await renderSelect(baseProps({ staged: true }))
     expect(select().disabled).toBe(true)
     expect(select().title).toBe(translate(en)('modelPickerSaveFirst'))
+    expect(container!.querySelector('[role="status"]')?.textContent).toBe(translate(en)('modelPickerSaveFirst'))
   })
 
   it('is disabled on a read-only document', async () => {
@@ -119,6 +126,7 @@ describe('ModelHeaderSelect', () => {
     await act(async () => {})
     expect(container!.querySelector('.ch-select')!.getAttribute('data-failed')).toBe('true')
     expect(select().title).toContain('denied')
+    expect(container!.querySelector('[role="status"]')?.textContent).toContain('denied')
   })
 
   it('renders Chinese copy under a zh dictionary', async () => {

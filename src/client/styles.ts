@@ -176,4 +176,6 @@ export const STYLES = `
 .ch-select-input:focus { outline: none; border-color: var(--dsw-alias-brand-primary); }
 .ch-select-input:disabled { opacity: 0.6; cursor: default; }
 .ch-select[data-failed="true"] .ch-select-input { border-color: var(--dsw-alias-label-error); }
+.ch-select-status { max-width: 240px; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
+.ch-select[data-failed="true"] .ch-select-status { color: var(--dsw-alias-label-error); }
 `
