@@ -5,7 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
+import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { apply, inject as pluginInject, stampModelHeaders } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
@@ -447,6 +449,61 @@ describe('dispatch header snapshots', () => {
     for (const dispose of harness.disposers) dispose()
     expect(harness.llm.registerAdapter).toBe(originalRegister)
     expect(adapter.stream).toBe(originalStream)
+  })
+})
+
+describe('runtime adapter registration order', () => {
+  it('wraps a pre-registered adapter for reviewer-style runtime streams', async () => {
+    type RuntimeSnapshot = {
+      models: { getModel(provider: string, id: string): Record<string, unknown> | undefined }
+    }
+    class PreRegisteredPiAdapter extends LlmAdapter {
+      readonly seen: unknown[] = []
+      private readonly snapshot: RuntimeSnapshot = {
+        models: {
+          getModel: (_provider, _id) => ({ id: 'm1' }),
+        },
+      }
+
+      current(): RuntimeSnapshot { return this.snapshot }
+
+      override prepareCall(provider: string, model: string): Promise<PreparedAdapterCall> {
+        const snapshot = this.current()
+        return Promise.resolve({
+          model: { provider, id: model, name: model },
+          stream: options => this.capture(options, snapshot),
+        })
+      }
+
+      override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+        return this.capture(options, this.current())
+      }
+
+      private async * capture(options: GenerateOptions, snapshot: RuntimeSnapshot): AsyncGenerator<StreamChunk> {
+        this.seen.push(snapshot.models.getModel(options.provider, options.model)?.['headers'])
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      }
+    }
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(LlmRuntime)
+      ctx.provide('settings', {
+        installSection() {},
+        get(ns: string) { return ns === PI_AI_NS ? PI_SECTION : undefined },
+      })
+      const adapter = new PreRegisteredPiAdapter()
+      ctx.llm.registerAdapter(['acme'], adapter)
+
+      // Cordis may mount this plugin after llm-pi-ai when another plugin
+      // changes dependency timing. Reviewer calls use this direct service path.
+      apply(ctx, { profiles: GW_PROFILES })
+      for await (const _chunk of ctx.llm.stream({ provider: 'acme', model: 'm1', messages: [] })) { /* drain */ }
+
+      expect(adapter.seen).toEqual([{ 'x-tenant': 'acme' }])
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })
 

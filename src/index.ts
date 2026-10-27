@@ -184,9 +184,16 @@ interface PiAiAdapterLike {
   current?(): PiAiSnapshotLike | undefined
 }
 
+/** One live adapter registration in the runtime's route registry. */
+interface AdapterRegistrationLike {
+  adapter: unknown
+}
+
 /** The llm service slice this plugin wraps. */
 interface LlmServiceLike {
   registerAdapter(providers: string[], adapter: unknown): unknown
+  /** Runtime-owned route registry; present in every supported DSH cohort. */
+  adapters?: ReadonlyMap<string, AdapterRegistrationLike>
 }
 
 type HeaderCarrier = Record<string, unknown>
@@ -465,6 +472,12 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
     }
     const registerPatch = patchMethod(registerTarget, 'registerAdapter', wrappedRegister)
+    // Mounting or reloading another plugin can change Cordis dependency timing:
+    // llm-pi-ai may already own routes before this plugin applies. Adopt those
+    // registrations as well as the future ones intercepted above.
+    if (llm.adapters instanceof Map) {
+      for (const registration of llm.adapters.values()) wrapAdapter(registration.adapter)
+    }
     ctx.effect(() => () => {
       restoreMethod(registerPatch)
       for (const patches of originals.values()) {
