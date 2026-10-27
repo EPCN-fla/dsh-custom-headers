@@ -36,6 +36,7 @@ DSH 的提供方资料（provider profile）本身支持 `headers`，但它作�
 
 | 插件版本 | 适配的 DSH 版本 |
 | --- | --- |
+| 0.4.1 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
 | 0.4.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
 | 0.3.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x` |
 | 0.2.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.1` |
@@ -62,7 +63,7 @@ dsh plugin --profile web add github:EPCN-fla/dsh-custom-headers
 ```sh
 git clone https://github.com/EPCN-fla/dsh-custom-headers.git
 cd dsh-custom-headers
-npm install
+npm ci --legacy-peer-deps=false  # 严格按锁文件安装，不裁剪 peer 条目
 npm run build
 npm pack        # 产出 dsh-custom-headers-<version>.tgz
 dsh plugin --profile web add ./dsh-custom-headers-<version>.tgz
@@ -157,7 +158,7 @@ llm-pi-ai:
 ## 开发
 
 ```sh
-npm ci --legacy-peer-deps=false  # 严格按锁文件安装并校验宿主 peer
+npm ci --legacy-peer-deps=false  # 严格按锁文件安装并校验宿主 peer；日常安装/构建不要改用 npm install
 npm run typecheck  # 类型检查
 npm test           # vitest：单元 / DOM 注入 / 组件 / 真实 pi-ai 连线测试
 npm run test:scripts # CI 矩阵、失败汇总与发布门禁测试

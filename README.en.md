@@ -36,6 +36,7 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 
 | Plugin version | Supported DSH versions |
 | --- | --- |
+| 0.4.1 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
 | 0.4.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x / 0.2.1-rc.x` |
 | 0.3.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.x / 0.2.0-rc.x` |
 | 0.2.0 | `0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.7-rc.1` |
@@ -62,7 +63,7 @@ When installed from a git source, npm runs the package's `prepare` script to bui
 ```sh
 git clone https://github.com/EPCN-fla/dsh-custom-headers.git
 cd dsh-custom-headers
-npm install
+npm ci --legacy-peer-deps=false  # install exactly from the lockfile without pruning peer entries
 npm run build
 npm pack        # produces dsh-custom-headers-<version>.tgz
 dsh plugin --profile web add ./dsh-custom-headers-<version>.tgz
@@ -157,7 +158,7 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 ## Development
 
 ```sh
-npm ci --legacy-peer-deps=false  # install from the lockfile and enforce host peers
+npm ci --legacy-peer-deps=false  # install from the lockfile and enforce host peers; do not substitute npm install for routine setup/builds
 npm run typecheck  # typecheck
 npm test           # vitest: unit / DOM injection / component / real pi-ai wire tests
 npm run test:scripts # CI matrix, failure summaries and release-gate tests
