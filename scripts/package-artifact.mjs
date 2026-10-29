@@ -22,6 +22,8 @@ run('npm', ['pack', '--ignore-scripts', '--pack-destination', directory])
 const tarball = join(directory, `${pkg.name}-${pkg.version}.tgz`)
 const contents = run('tar', ['-tf', tarball]).stdout
 if (!contents.includes('package/cordis.patch.yml\n')) throw new Error('cordis.patch.yml missing from the artifact')
+if (pkg.icon !== './icon.svg') throw new Error('package icon declaration missing or unexpected')
+if (!contents.includes('package/icon.svg\n')) throw new Error('icon.svg missing from the artifact')
 if (contents.split('\n').some(name => /(?:^|\/)src\//.test(name) || /\.(?:ts|tsx)$/.test(name) && !/\.d\.ts$/.test(name))) {
   throw new Error('TypeScript sources leaked into the artifact')
 }
