@@ -50,17 +50,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # npm 10.9 / 11.6 can fail cross-cohort peer resolution with
+      # edgesOut/null or a false conflict. Keep both Node legs on one fixed CLI.
+      - name: Ensure npm CLI for cohort resolution
+        id: npm22
+        run: npm install --global npm@11.19.0
       - name: Select exact DSH cohort
         id: cohort
         run: |
-          # Validate the committed rc.3 lock before selecting another cohort.
+          # Validate the committed rc.4 lock before selecting another cohort.
           npm ci --ignore-scripts --legacy-peer-deps=false
           CHANGED=$(node scripts/ci-compatibility.mjs select "$DSH_TEST_VERSION")
           if [ "$CHANGED" = 'changed=true' ]; then
-            # npm resolves against the actual tree as well as the lock. Move the
-            # committed cohort aside instead of allowing mixed peer resolution.
+            # npm resolves against the actual tree as well as the lock. Move both
+            # aside: inherited cross-cohort locks can trigger unbounded peer backtracking.
             mkdir -p artifacts/ci
             mv node_modules artifacts/ci/committed-node_modules
+            mv package-lock.json artifacts/ci/committed-package-lock.json
             npm install --package-lock-only --ignore-scripts --no-audit --no-fund --legacy-peer-deps=false
           fi
       - name: Verify Node 22
@@ -74,6 +80,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Ensure npm CLI for cohort resolution
+        id: npm24
+        run: npm install --global npm@11.19.0
       # Node 22 failures must not hide the independent Node 24 result.
       - name: Verify Node 24
         id: verify24

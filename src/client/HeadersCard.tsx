@@ -1,9 +1,9 @@
 /**
  * The `custom-headers` card inside the official "Plugin configuration"
- * (插件配置) tab: one collapsible card, registered into the
+ * (插件配置) tab: one permanently expanded card, registered into the
  * `settings.plugin.item` slot keyed by the namespace it edits. The chrome is
- * a 1:1 port of the official PluginCard (header, disclosure, save/discard
- * footer). Inside the card, each profile is its own disclosure: collapsed it
+ * a 1:1 port of the official PluginCard (header, save/discard footer).
+ * Inside the card, each profile is its own disclosure: collapsed it
  * shows just the ID; expanding reveals the id field and the header
  * name/value rows with their + / − buttons. The whole list saves in one
  * settings mutation.
@@ -81,7 +81,6 @@ function issueKey(code: ProfileIssue['code']): ChKey {
  */
 export function HeadersCard(props: HeadersCardProps): ReactNode {
   const { t, api, subscribe } = props
-  const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState<HeaderProfile[] | undefined>(undefined)
   const [loadedRevision, setLoadedRevision] = useState<number | undefined>(undefined)
   const [writable, setWritable] = useState(true)
@@ -214,164 +213,153 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
 
   const blocked = !writable || !dirty || issues.length > 0 || saving
   return (
-    <li className={`ch-card${open ? ' ch-card-open' : ''}`}>
-      <button
-        type="button"
-        className="ch-card-header"
-        aria-expanded={open}
-        aria-label={`${t(open ? 'collapse' : 'expand')}: ${t('cardTitle')}`}
-        onClick={() => { setOpen(!open) }}
-      >
+    <li className="ch-card ch-card-open">
+      <div className="ch-card-header">
         <span className="ch-head-text">
           <span className="ch-card-name">{t('cardTitle')}</span>
           <span className="ch-card-description">{t('cardDescription')}</span>
         </span>
         {dirty ? <span className="ch-tag">{t('unsaved')}</span> : null}
-        <ChevronIcon open={open} />
-      </button>
-      {open
-        ? (
-          <div className="ch-card-body">
-            {!writable ? <p className="ch-readonly" role="status">{t('readOnly')}</p> : null}
-            {current !== undefined && current.length === 0
-              ? <p className="ch-empty">{t('emptyProfiles')}</p>
-              : null}
-            {(current ?? []).map((profile, at) => {
-              const profileOpen = openProfiles[at] === true
-              const profileIssues = grouped.get(at) ?? []
-              const idIssue = profileIssues.find(issue => issue.row === undefined)
-              const title = profile.id.trim()
-              return (
-                <section className="ch-profile" key={at}>
-                  <div className="ch-profile-head">
-                    <button
-                      type="button"
-                      className="ch-profile-toggle"
-                      aria-expanded={profileOpen}
-                      aria-label={`${t(profileOpen ? 'collapseProfile' : 'expandProfile')}: ${title.length > 0 ? title : t('profileIdUntitled')}`}
-                      onClick={() => { toggleProfile(at) }}
-                    >
-                      <ChevronIcon open={profileOpen} />
-                      <span className={`ch-profile-title${title.length === 0 ? ' ch-profile-title-unset' : ''}`}>
-                        {title.length > 0 ? title : t('profileIdUntitled')}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="ch-button ch-button-small"
-                      aria-label={`${t('removeProfile')} ${String(at + 1)}`}
+      </div>
+      <div className="ch-card-body">
+        {!writable ? <p className="ch-readonly" role="status">{t('readOnly')}</p> : null}
+        {current !== undefined && current.length === 0
+          ? <p className="ch-empty">{t('emptyProfiles')}</p>
+          : null}
+        {(current ?? []).map((profile, at) => {
+          const profileOpen = openProfiles[at] === true
+          const profileIssues = grouped.get(at) ?? []
+          const idIssue = profileIssues.find(issue => issue.row === undefined)
+          const title = profile.id.trim()
+          return (
+            <section className="ch-profile" key={at}>
+              <div className="ch-profile-head">
+                <button
+                  type="button"
+                  className="ch-profile-toggle"
+                  aria-expanded={profileOpen}
+                  aria-label={`${t(profileOpen ? 'collapseProfile' : 'expandProfile')}: ${title.length > 0 ? title : t('profileIdUntitled')}`}
+                  onClick={() => { toggleProfile(at) }}
+                >
+                  <ChevronIcon open={profileOpen} />
+                  <span className={`ch-profile-title${title.length === 0 ? ' ch-profile-title-unset' : ''}`}>
+                    {title.length > 0 ? title : t('profileIdUntitled')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ch-button ch-button-small"
+                  aria-label={`${t('removeProfile')} ${String(at + 1)}`}
+                  disabled={!writable || saving}
+                  onClick={() => { removeProfile(at) }}
+                >
+                  {t('removeProfile')}
+                </button>
+              </div>
+              {profileOpen
+                ? (
+                  <div className="ch-profile-body">
+                    <input
+                      className={`ch-input${idIssue !== undefined ? ' ch-input-invalid' : ''}`}
+                      type="text"
+                      value={profile.id}
+                      placeholder={t('profileIdPlaceholder')}
+                      aria-label={`${t('profileId')} ${String(at + 1)}`}
                       disabled={!writable || saving}
-                      onClick={() => { removeProfile(at) }}
-                    >
-                      {t('removeProfile')}
-                    </button>
-                  </div>
-                  {profileOpen
-                    ? (
-                      <div className="ch-profile-body">
-                        <input
-                          className={`ch-input${idIssue !== undefined ? ' ch-input-invalid' : ''}`}
-                          type="text"
-                          value={profile.id}
-                          placeholder={t('profileIdPlaceholder')}
-                          aria-label={`${t('profileId')} ${String(at + 1)}`}
-                          disabled={!writable || saving}
-                          onChange={(event) => { patchProfile(at, { id: event.target.value }) }}
-                        />
-                        {idIssue !== undefined
-                          ? <p className="ch-issue" role="alert">{t(issueKey(idIssue.code))}</p>
-                          : null}
-                        {profile.headers.map((entry, row) => {
-                          const rowIssue = profileIssues.find(issue => issue.row === row)
-                          const nameInvalid = rowIssue !== undefined && rowIssue.code !== 'value-invalid'
-                          const valueInvalid = rowIssue?.code === 'value-invalid'
-                          return (
-                            <div className="ch-header-row" key={row}>
-                              <input
-                                className={`ch-input${nameInvalid ? ' ch-input-invalid' : ''}`}
-                                type="text"
-                                value={entry.name}
-                                placeholder={t('headerName')}
-                                aria-label={`${t('headerName')} ${String(at + 1)}-${String(row + 1)}`}
-                                disabled={!writable || saving}
-                                onChange={(event) => { patchRow(at, row, { name: event.target.value }) }}
-                              />
-                              <input
-                                className={`ch-input${valueInvalid ? ' ch-input-invalid' : ''}`}
-                                type="text"
-                                value={entry.value}
-                                placeholder={t('headerValue')}
-                                aria-label={`${t('headerValue')} ${String(at + 1)}-${String(row + 1)}`}
-                                disabled={!writable || saving}
-                                onChange={(event) => { patchRow(at, row, { value: event.target.value }) }}
-                              />
-                              <button
-                                type="button"
-                                className="ch-button ch-button-icon ch-button-small"
-                                aria-label={`${t('removeHeader')} ${String(at + 1)}-${String(row + 1)}`}
-                                title={t('removeHeader')}
-                                disabled={!writable || saving}
-                                onClick={() => {
-                                  patchProfile(at, { headers: profile.headers.filter((_, atRow) => atRow !== row) })
-                                }}
-                              >
-                                −
-                              </button>
-                              {rowIssue !== undefined
-                                ? <p className="ch-issue" role="alert">{t(issueKey(rowIssue.code))}</p>
-                                : null}
-                            </div>
-                          )
-                        })}
-                        <div>
+                      onChange={(event) => { patchProfile(at, { id: event.target.value }) }}
+                    />
+                    {idIssue !== undefined
+                      ? <p className="ch-issue" role="alert">{t(issueKey(idIssue.code))}</p>
+                      : null}
+                    {profile.headers.map((entry, row) => {
+                      const rowIssue = profileIssues.find(issue => issue.row === row)
+                      const nameInvalid = rowIssue !== undefined && rowIssue.code !== 'value-invalid'
+                      const valueInvalid = rowIssue?.code === 'value-invalid'
+                      return (
+                        <div className="ch-header-row" key={row}>
+                          <input
+                            className={`ch-input${nameInvalid ? ' ch-input-invalid' : ''}`}
+                            type="text"
+                            value={entry.name}
+                            placeholder={t('headerName')}
+                            aria-label={`${t('headerName')} ${String(at + 1)}-${String(row + 1)}`}
+                            disabled={!writable || saving}
+                            onChange={(event) => { patchRow(at, row, { name: event.target.value }) }}
+                          />
+                          <input
+                            className={`ch-input${valueInvalid ? ' ch-input-invalid' : ''}`}
+                            type="text"
+                            value={entry.value}
+                            placeholder={t('headerValue')}
+                            aria-label={`${t('headerValue')} ${String(at + 1)}-${String(row + 1)}`}
+                            disabled={!writable || saving}
+                            onChange={(event) => { patchRow(at, row, { value: event.target.value }) }}
+                          />
                           <button
                             type="button"
-                            className="ch-button ch-button-small"
-                            aria-label={`${t('addHeader')} ${String(at + 1)}`}
+                            className="ch-button ch-button-icon ch-button-small"
+                            aria-label={`${t('removeHeader')} ${String(at + 1)}-${String(row + 1)}`}
+                            title={t('removeHeader')}
                             disabled={!writable || saving}
-                            onClick={() => { patchProfile(at, { headers: [...profile.headers, { name: '', value: '' }] }) }}
+                            onClick={() => {
+                              patchProfile(at, { headers: profile.headers.filter((_, atRow) => atRow !== row) })
+                            }}
                           >
-                            + {t('addHeader')}
+                            −
                           </button>
+                          {rowIssue !== undefined
+                            ? <p className="ch-issue" role="alert">{t(issueKey(rowIssue.code))}</p>
+                            : null}
                         </div>
-                      </div>
-                    )
-                    : null}
-                </section>
-              )
-            })}
-            <div style={{ marginTop: '4px' }}>
-              <button
-                type="button"
-                className="ch-button"
-                disabled={!writable || saving}
-                onClick={addProfile}
-              >
-                + {t('addProfile')}
-              </button>
-            </div>
-            <div className="ch-card-footer">
-              {failed ? <p className="ch-failed" role="status">{t('saveFailed')}</p> : null}
-              <button
-                type="button"
-                className="ch-button"
-                disabled={!dirty || saving}
-                onClick={onDiscard}
-              >
-                {t('discard')}
-              </button>
-              <button
-                type="button"
-                className="ch-button ch-button-primary"
-                disabled={blocked}
-                onClick={() => { void onSave() }}
-              >
-                {t(saving ? 'saving' : 'save')}
-              </button>
-            </div>
-          </div>
-        )
-        : null}
+                      )
+                    })}
+                    <div>
+                      <button
+                        type="button"
+                        className="ch-button ch-button-small"
+                        aria-label={`${t('addHeader')} ${String(at + 1)}`}
+                        disabled={!writable || saving}
+                        onClick={() => { patchProfile(at, { headers: [...profile.headers, { name: '', value: '' }] }) }}
+                      >
+                        + {t('addHeader')}
+                      </button>
+                    </div>
+                  </div>
+                )
+                : null}
+            </section>
+          )
+        })}
+        <div style={{ marginTop: '4px' }}>
+          <button
+            type="button"
+            className="ch-button"
+            disabled={!writable || saving}
+            onClick={addProfile}
+          >
+            + {t('addProfile')}
+          </button>
+        </div>
+        <div className="ch-card-footer">
+          {failed ? <p className="ch-failed" role="status">{t('saveFailed')}</p> : null}
+          <button
+            type="button"
+            className="ch-button"
+            disabled={!dirty || saving}
+            onClick={onDiscard}
+          >
+            {t('discard')}
+          </button>
+          <button
+            type="button"
+            className="ch-button ch-button-primary"
+            disabled={blocked}
+            onClick={() => { void onSave() }}
+          >
+            {t(saving ? 'saving' : 'save')}
+          </button>
+        </div>
+      </div>
     </li>
   )
 }

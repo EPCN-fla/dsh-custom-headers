@@ -52,11 +52,11 @@ function main() {
       if (dependencies[key] !== selected) { dependencies[key] = selected; changed = true }
     }
     // Older DSH cohorts used prerelease ranges for runtime peers. Pin every
-    // package present in the committed lock so npm cannot select a later RC
-    // for a transitive peer. CI-only selection never commits these overrides.
+    // package present in the committed lock plus historical peers absent from
+    // it, so npm cannot select a later RC. CI never commits these overrides.
     if ((cohortChanged || manifest.overrides !== undefined) && existsSync('package-lock.json')) {
       const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
-      const names = new Set(packages)
+      const names = new Set([...packages, '@deepseek-ai/dsh-invariants'])
       for (const path of Object.keys(lock.packages ?? {})) {
         const match = /(?:^|\/)node_modules\/(@deepseek-ai\/dsh-[^/]+)$/.exec(path)
         if (match) names.add(match[1])

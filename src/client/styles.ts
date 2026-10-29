@@ -28,14 +28,12 @@ export const STYLES = `
   font: inherit;
   color: inherit;
   text-align: left;
-  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
 }
-.ch-card-header:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
 .ch-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ch-card-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
 .ch-card-description { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }

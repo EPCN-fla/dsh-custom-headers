@@ -40,6 +40,7 @@ test('compatibility matrix selects only DSH, Cordis and Schemastery development 
     }
     assert.deepEqual(selected.peerDependencies, manifest.peerDependencies)
     assert.equal(selected.overrides['@deepseek-ai/dsh-authorization'], version)
+    assert.equal(selected.overrides['@deepseek-ai/dsh-invariants'], version)
     assert.equal(selected.overrides['@deepseek-ai/cordis'], manifest.dshCompatibility[version].cordis)
     assert.equal(selected.overrides['@deepseek-ai/schemastery'], manifest.dshCompatibility[version].schemastery)
     assert.equal(run(root, 'ci-compatibility.mjs', ['select', version]).stdout.trim(), 'changed=false')
@@ -77,6 +78,30 @@ test('verification records failures, continues independent checks and summarizes
   report = JSON.parse(readFileSync(join(root, `artifacts/ci/node-${major}.json`)))
   assert.ok(report.steps.slice(1).every(s => s.status === 'skipped'))
 }))
+
+test('workflow pins the npm resolver before both Node verification legs', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
+  const steps = workflow.jobs.verify.steps
+  const at = id => steps.findIndex(step => step.id === id)
+  for (const id of ['npm22', 'npm24']) {
+    const index = at(id)
+    assert.ok(index >= 0, `${id} must pin npm before dependency resolution`)
+    assert.equal(steps[index].run, 'npm install --global npm@11.19.0')
+  }
+  assert.ok(at('setup22') < at('npm22') && at('npm22') < at('cohort'))
+  assert.ok(at('setup24') < at('npm24') && at('npm24') < at('verify24'))
+})
+
+test('cohort selection resolves a replacement DSH lock without the committed lock', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
+  const run = workflow.jobs.verify.steps.find(step => step.id === 'cohort').run
+  const moveTree = run.indexOf('mv node_modules artifacts/ci/committed-node_modules')
+  const moveLock = run.indexOf('mv package-lock.json artifacts/ci/committed-package-lock.json')
+  const resolve = run.indexOf('npm install --package-lock-only')
+  assert.ok(moveTree >= 0, 'committed node_modules must be moved aside')
+  assert.ok(moveLock > moveTree, 'committed lockfile must also be moved aside')
+  assert.ok(resolve > moveLock, 'replacement resolution must start after the old lockfile is removed')
+})
 
 test('workflow isolates PR validation from tag-only publishing with no artifact uploads', () => {
   const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
