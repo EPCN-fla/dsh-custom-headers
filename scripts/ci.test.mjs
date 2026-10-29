@@ -78,6 +78,17 @@ test('verification records failures, continues independent checks and summarizes
   assert.ok(report.steps.slice(1).every(s => s.status === 'skipped'))
 }))
 
+test('cohort selection resolves a replacement DSH lock without the committed lock', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
+  const run = workflow.jobs.verify.steps.find(step => step.id === 'cohort').run
+  const moveTree = run.indexOf('mv node_modules artifacts/ci/committed-node_modules')
+  const moveLock = run.indexOf('mv package-lock.json artifacts/ci/committed-package-lock.json')
+  const resolve = run.indexOf('npm install --package-lock-only')
+  assert.ok(moveTree >= 0, 'committed node_modules must be moved aside')
+  assert.ok(moveLock > moveTree, 'committed lockfile must also be moved aside')
+  assert.ok(resolve > moveLock, 'replacement resolution must start after the old lockfile is removed')
+})
+
 test('workflow isolates PR validation from tag-only publishing with no artifact uploads', () => {
   const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
   assert.deepEqual(workflow.on, { pull_request: null, push: { tags: ['v*'] } })

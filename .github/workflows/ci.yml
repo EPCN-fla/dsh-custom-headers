@@ -57,10 +57,11 @@ jobs:
           npm ci --ignore-scripts --legacy-peer-deps=false
           CHANGED=$(node scripts/ci-compatibility.mjs select "$DSH_TEST_VERSION")
           if [ "$CHANGED" = 'changed=true' ]; then
-            # npm resolves against the actual tree as well as the lock. Move the
-            # committed cohort aside instead of allowing mixed peer resolution.
+            # npm resolves against the actual tree as well as the lock. Move both
+            # aside: inherited cross-cohort locks can trigger unbounded peer backtracking.
             mkdir -p artifacts/ci
             mv node_modules artifacts/ci/committed-node_modules
+            mv package-lock.json artifacts/ci/committed-package-lock.json
             npm install --package-lock-only --ignore-scripts --no-audit --no-fund --legacy-peer-deps=false
           fi
       - name: Verify Node 22
