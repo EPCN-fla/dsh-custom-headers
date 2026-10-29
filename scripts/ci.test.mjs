@@ -40,6 +40,7 @@ test('compatibility matrix selects only DSH, Cordis and Schemastery development 
     }
     assert.deepEqual(selected.peerDependencies, manifest.peerDependencies)
     assert.equal(selected.overrides['@deepseek-ai/dsh-authorization'], version)
+    assert.equal(selected.overrides['@deepseek-ai/dsh-invariants'], version)
     assert.equal(selected.overrides['@deepseek-ai/cordis'], manifest.dshCompatibility[version].cordis)
     assert.equal(selected.overrides['@deepseek-ai/schemastery'], manifest.dshCompatibility[version].schemastery)
     assert.equal(run(root, 'ci-compatibility.mjs', ['select', version]).stdout.trim(), 'changed=false')
