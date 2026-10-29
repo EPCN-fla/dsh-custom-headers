@@ -78,6 +78,19 @@ test('verification records failures, continues independent checks and summarizes
   assert.ok(report.steps.slice(1).every(s => s.status === 'skipped'))
 }))
 
+test('workflow pins the npm resolver before both Node verification legs', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
+  const steps = workflow.jobs.verify.steps
+  const at = id => steps.findIndex(step => step.id === id)
+  for (const id of ['npm22', 'npm24']) {
+    const index = at(id)
+    assert.ok(index >= 0, `${id} must pin npm before dependency resolution`)
+    assert.equal(steps[index].run, 'npm install --global npm@11.19.0')
+  }
+  assert.ok(at('setup22') < at('npm22') && at('npm22') < at('cohort'))
+  assert.ok(at('setup24') < at('npm24') && at('npm24') < at('verify24'))
+})
+
 test('cohort selection resolves a replacement DSH lock without the committed lock', () => {
   const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
   const run = workflow.jobs.verify.steps.find(step => step.id === 'cohort').run
