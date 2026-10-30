@@ -58,7 +58,7 @@ jobs:
       - name: Select exact DSH cohort
         id: cohort
         run: |
-          # Validate the committed rc.4 lock before selecting another cohort.
+          # Validate the committed rc.5 lock before selecting another cohort.
           npm ci --ignore-scripts --legacy-peer-deps=false
           CHANGED=$(node scripts/ci-compatibility.mjs select "$DSH_TEST_VERSION")
           if [ "$CHANGED" = 'changed=true' ]; then
