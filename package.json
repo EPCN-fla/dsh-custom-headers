@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-headers",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Per-model custom request headers for DeepSeek Harness: define named header profiles in Settings → Plugins → Plugin configuration, pick one per model in the provider's model catalog, and every call to that model carries those headers.",
   "icon": "./icon.svg",
   "license": "MIT",
@@ -76,11 +76,11 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
     "@earendil-works/pi-ai": "^1.1.0",
-    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.4",
-    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.4",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.4",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-rc.4",
-    "@deepseek-ai/dsh-settings": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.5",
     "@deepseek-ai/schemastery": "3.18.5",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.1",
@@ -137,6 +137,10 @@
       "schemastery": "3.18.5"
     },
     "0.2.1-rc.4": {
+      "cordis": "4.0.5",
+      "schemastery": "3.18.5"
+    },
+    "0.2.1-rc.5": {
       "cordis": "4.0.5",
       "schemastery": "3.18.5"
     }
