@@ -36,6 +36,7 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 
 | Plugin version | Minimum compatible DSH version | Highest compatible DSH version |
 | --- | --- | --- |
+| 0.4.4 | 0.1.5-rc.2 | 0.2.2-rc.1 |
 | 0.4.3 | 0.1.5-rc.2 | 0.2.1-rc.5 |
 | 0.4.2 | 0.1.5-rc.2 | 0.2.1-rc.4 |
 | 0.4.1 | 0.1.5-rc.2 | 0.2.1-rc.3 |
@@ -152,7 +153,7 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 
 - Only calls served by the **pi-ai adapter** (`llm-pi-ai` provider routes, including hand-declared custom providers) are affected; other adapter families (e.g. `deepseek-official`) do not pass through this dispatch path and picks are not applied to them.
 - Headers apply to the model's **actual LLM requests**. Configuration-time discovery ("fetch model list from the endpoint") keeps using the provider profile's own headers and does not attach per-model picks.
-- The dropdown is injected into the official Models page's per-row Model options disclosure (called Capacities on DSH 0.1.5) through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the 0.1.5-rc.2 and 0.1.7-rc.1 – 0.2.1-rc.5 page structures (the disclosure label is resolved per generation through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
+- The dropdown is injected into the official Models page's per-row Model options disclosure (called Capacities on DSH 0.1.5) through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the 0.1.5-rc.2 and 0.1.7-rc.1 – 0.2.2-rc.1 page structures (the disclosure label is resolved per generation through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
 - (DSH 0.1.5 only) The card's position on the Plugin configuration tab depends on the shipped web-search card's registration: this plugin waits for it on the slot ledger before registering (with a ~10s fallback timeout); if a deployment strips the shipped plugins package, the card still registers, at whatever position the ledger has then. On DSH 0.1.7+ the card lives on this package's detail page and has no position dependency.
 - The picker writes only explicit `models` rows in `llm-pi-ai`. Rows inherited entirely from an installed catalog without a writable explicit model entry remain disabled; the plugin does not guess a `modelOverrides` write target.
 - Repeated header names within one profile resolve last-wins, case-insensitively (Fetch `Headers` semantics).
@@ -181,7 +182,7 @@ All tests live in `tests/`:
 | `tests/card.spec.tsx` | Profile card: expand, edit, validation gating, save/discard, load races, read-only |
 | `tests/select.spec.tsx` | Dropdown: options, writes, missing-profile display, canonical IDs, visible status, disabled states, Chinese copy |
 
-CI runs only for PRs and `v*` tag pushes. PRs read the exact DSH/Cordis/Schemastery matrix from `package.json` → `dshCompatibility` and verify Node 22 then 24 for each cohort. Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
+CI runs only for PRs and `v*` tag pushes. PRs read the exact DSH/Cordis/Schemastery matrix from `package.json` → `dshCompatibility` and run static, unit and package checks on Node 22 then 24 for each cohort (a real DSH 0.2.2-rc.1 host requires Node >=24.9.0). Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
 
 ## License
 
