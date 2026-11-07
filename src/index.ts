@@ -279,9 +279,13 @@ export function apply(ctx: Context, config: Config = {}): void {
     // Write-time validation, replacing the removed installSection hook: the
     // loader's internal/config waterfall runs on every entry recompose, and a
     // throw refuses the change (the settings write surfaces it verbatim).
-    ctx.on('internal/config', function (this: unknown, _raw: unknown, next: () => unknown) {
+    ctx.on('internal/config', function (this: unknown, fiberOrRaw: unknown, next: () => unknown) {
       const nextConfig = next()
-      if (this !== fiber) return nextConfig
+      // Cordis 4.0 binds the owning fiber to `this` and passes the raw config
+      // first; Cordis 4.1 passes that fiber as the first argument instead.
+      // Reading both shapes keeps one artifact compatible across the cohorts.
+      const own = this === fiber || fiberOrRaw === fiber
+      if (!own) return nextConfig
       assertValidProfiles(profilesFromUnknown(isRecord(nextConfig) ? nextConfig['profiles'] : undefined))
       return nextConfig
     })

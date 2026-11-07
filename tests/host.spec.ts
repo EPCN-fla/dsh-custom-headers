@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { apply, inject as pluginInject, stampModelHeaders } from '../src/index.js'
+import { apply, Config as PluginConfig, inject as pluginInject, stampModelHeaders } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
 
@@ -587,15 +587,72 @@ describe('settings forms seam (DSH 0.1.7)', () => {
     expect('headers' in modelObj).toBe(false)
   })
 
-  it('refuses an invalid profile list through internal/config, own fiber only', () => {
+  it('refuses an invalid profile list through both internal/config contracts, own fiber only', () => {
     const harness = makeModernHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
     expect(harness.configListeners).toHaveLength(1)
     const listener = harness.configListeners[0]!
-    const next = () => ({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
-    expect(() => listener.call(harness.fiber, undefined, next)).toThrow(/case-insensitively/)
-    // Another entry's recompose is passed through untouched.
-    const other = () => ({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
-    expect(listener.call({}, undefined, other)).toEqual({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
+    const duplicate = () => ({ profiles: [{ id: 'GW', headers: [] }, { id: 'gw', headers: [] }] })
+
+    // Cordis 4.0: this=owner, arguments=(raw, next).
+    let legacyCalls = 0
+    const legacy = () => { legacyCalls += 1; return duplicate() }
+    expect(() => listener.call(harness.fiber, undefined, legacy)).toThrow(/case-insensitively/)
+    expect(legacyCalls).toBe(1)
+
+    // Cordis 4.1: this=null, arguments=(owner, next).
+    let modernCalls = 0
+    const modern = () => { modernCalls += 1; return duplicate() }
+    expect(() => listener.call(null, harness.fiber, modern)).toThrow(/case-insensitively/)
+    expect(modernCalls).toBe(1)
+
+    // Another entry's recompose is passed through untouched on both contracts.
+    let otherLegacyCalls = 0
+    const otherLegacy = () => { otherLegacyCalls += 1; return duplicate() }
+    expect(listener.call({}, undefined, otherLegacy)).toEqual(duplicate())
+    expect(otherLegacyCalls).toBe(1)
+    let otherModernCalls = 0
+    const otherModern = () => { otherModernCalls += 1; return duplicate() }
+    expect(listener.call(null, {}, otherModern)).toEqual(duplicate())
+    expect(otherModernCalls).toBe(1)
+  })
+
+  it('enforces profile validation through the real Cordis config dispatcher', async () => {
+    const ctx = new Context()
+    try {
+      ctx.provide('settings', {
+        configure() { return () => {} },
+        describe() { return [] },
+      } as never)
+      ctx.provide('llm', {
+        adapters: new Map(),
+        registerAdapter() {},
+      } as never)
+      const fiber = await ctx.plugin({
+        name: 'dsh-custom-headers',
+        inject: pluginInject,
+        Config: PluginConfig,
+        apply,
+      })
+      const resolve = (candidate: { profiles: HeaderProfile[] }): unknown => {
+        const modern = fiber as unknown as { resolveConfig?: (value: unknown) => unknown }
+        if (typeof modern.resolveConfig === 'function') return modern.resolveConfig(candidate)
+        // Cordis 4.0 exposes the waterfall rather than Fiber.resolveConfig().
+        // Hide that legacy overload when this test compiles against Cordis 4.1.
+        const waterfall = fiber.ctx.waterfall as unknown as (...args: unknown[]) => unknown
+        return waterfall.call(fiber.ctx, fiber, 'internal/config', candidate, () => candidate)
+      }
+
+      expect(() => resolve({ profiles: [
+        { id: 'GW', headers: [] },
+        { id: 'gw', headers: [] },
+      ] })).toThrow(/case-insensitively/)
+      expect(() => resolve({ profiles: [
+        { id: 'gw', headers: [{ name: 'bad\nname', value: 'value' }] },
+      ] })).toThrow(/Fetch cannot represent/)
+      expect(resolve({ profiles: GW_PROFILES })).toBeDefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('prefers the forms seam when a host somehow offers both faces', () => {
