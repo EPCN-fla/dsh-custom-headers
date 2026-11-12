@@ -1,4 +1,4 @@
-/** Run one Node leg or render both legs into GitHub Actions Summary. */
+/** Run the Node 24 leg or render it into GitHub Actions Summary. */
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -11,10 +11,10 @@ const version = process.env.DSH_TEST_VERSION
 if (!versions.includes(version)) throw new Error('DSH_TEST_VERSION must name a supported exact version')
 
 if (mode === 'summary') {
-  const lines = [`## DSH ${version} — Node 22 / 24`, '',
+  const lines = [`## DSH ${version} — Node 24`, '',
     '| Node | Setup | Verification | Install | Typecheck | Tests | Scripts | Build | Package |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
-  for (const node of ['22', '24']) {
+  for (const node of ['24']) {
     let report
     try { report = JSON.parse(readFileSync(`${directory}/node-${node}.json`, 'utf8')) } catch { /* A failed setup has no report. */ }
     const status = key => report?.steps.find(step => step.name === key)?.status ?? 'not run'
@@ -24,8 +24,9 @@ if (mode === 'summary') {
   const text = lines.join('\n')
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text)
   else process.stdout.write(text)
-} else if (mode === 'verify' && ['22', '24'].includes(major)) {
-  if (process.versions.node.split('.')[0] !== major) throw new Error(`Expected Node ${major}, got ${process.version}`)
+} else if (mode === 'verify' && major === '24') {
+  const [actualMajor, actualMinor] = process.versions.node.split('.').map(Number)
+  if (actualMajor !== 24 || actualMinor < 9) throw new Error(`Expected Node >=24.9.0, got ${process.version}`)
   mkdirSync(directory, { recursive: true })
   const report = { node: process.version, dsh: version, steps: [] }
   const save = () => writeFileSync(`${directory}/node-${major}.json`, `${JSON.stringify(report, null, 2)}\n`)
@@ -41,8 +42,7 @@ if (mode === 'summary') {
     save()
     return status === 'passed'
   }
-  // Node 24 reuses the selected cohort's lockfile; it must not silently resolve
-  // different dependencies from Node 22. Install scripts never run here.
+  // Reuse the selected cohort's committed lockfile. Install scripts never run here.
   if (run('install', ['ci', '--ignore-scripts', '--legacy-peer-deps=false'])) {
     run('typecheck', ['run', 'typecheck'])
     run('test', ['run', 'test'])
@@ -59,5 +59,5 @@ if (mode === 'summary') {
   }
   process.exitCode = report.steps.some(step => step.status === 'failed') ? 1 : 0
 } else {
-  throw new Error('Usage: node scripts/ci-verify.mjs verify <22|24> | summary')
+  throw new Error('Usage: node scripts/ci-verify.mjs verify <24> | summary')
 }
