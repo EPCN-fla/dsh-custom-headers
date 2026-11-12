@@ -1,20 +1,10 @@
 /**
- * Browser half of dsh-custom-headers.
+ * Browser half of dsh-custom-headers on DSH 0.2.2-rc.2.
  *
  * Contributions, all of which dispose with the plugin fiber:
- *   1. The "自定义请求头" / "Custom headers" configuration card. Where it
- *      registers depends on the host generation:
- *        - DSH 0.1.7+: the keyed `plugins.bundle.config` slot under the
- *          package name (the retired `settings.plugin.item`'s successor),
- *          rendered on this package's Plugins-page detail view; and
- *        - DSH 0.1.5: the sanctioned `settings.plugin.item` slot keyed by
- *          the namespace it edits (`custom-headers`). Keyed entries render
- *          in ledger (registration) order and this plugin's browser half can
- *          apply BEFORE the shipped cards register, so the registration
- *          defers until the shipped web-search card is on the ledger —
- *          landing the card right below 网页搜索, at the bottom of the list.
- *      Both registrations go through `slots.inject`, so each runs only on
- *      the generation that declares its slot.
+ *   1. The "自定义请求头" / "Custom headers" configuration card in the
+ *      keyed `plugins.bundle.config` slot under the package name, rendered
+ *      on this package's Plugins-page detail view.
  *   2. The DOM bypass injector: a MutationObserver over the whole document
  *      keeps the official Models page's model rows (the provider card's
  *      model catalog) equipped with the header-profile picker.
@@ -46,30 +36,13 @@ export const inject = ['slots', 'locale', 'remote', 'remote.settings']
 const HOST_MODELS_NS = 'settings.models'
 
 /**
- * The settings-namespace key of the shipped 网页搜索 / web-search card — the
- * last shipped card on the Plugin configuration tab. This card defers its
- * registration until that key is on the ledger (see below).
- */
-const WEB_SEARCH_CARD_KEY = 'web-search-deepseek'
-
-/**
- * How long the card registration waits for the shipped cards before
- * registering anyway (a deployment without the web-search card still gets
- * this one, simply at whatever position the ledger is at then).
- */
-const CARD_DEFER_TIMEOUT_MS = 10_000
-
-/**
  * The official Models-page controls this plugin anchors to, as (dictionary
- * key, ...English copy) tuples — the English copies are both the anchors for
- * a host that ships no such namespace and the language the host itself falls
- * back to, and every spelling a supported generation ever shipped is listed
- * (the disclosure was "Capacities" on 0.1.5 and is "Model options" since
- * 0.1.7). Resolved through the host's own dictionary so a third language (or
- * a late language pack) relabels the page and the anchors together.
+ * key, ...English copy) tuples. The English copies are the anchors for a host
+ * that ships no such namespace and the host's own fallback language. Resolve
+ * through the host dictionary so another language relabels both together.
  */
 const HOST_LABEL_KEYS = {
-  capacity: ['modelAdvanced', 'Model options', 'Capacities'],
+  capacity: ['modelAdvanced', 'Model options'],
   modelId: ['modelId', 'Model ID'],
   routeId: ['customRoute', 'Provider ID'],
 } as const satisfies Record<keyof HostLabels, readonly [string, ...string[]]>
@@ -159,16 +132,11 @@ export function apply(ctx: ClientContext): void {
   }
 
   // ---- Plugin-configuration card ----
-  // Two slot registrations, one per host generation; each goes through
-  // slots.inject, which fires only once its slot is DECLARED, so exactly one
-  // of them ever lands: the legacy keyed settings.plugin.item entry on DSH
-  // 0.1.5, the keyed plugins.bundle.config entry on DSH 0.1.7+. External
-  // invalidations of the namespace (another surface's save, a reconnect)
-  // reach the card through the subscribe face so a stale baseline never
-  // fences its next save.
+  // External invalidations (another surface's save, a reconnect) reach the
+  // card through this subscription so a stale baseline never fences its save.
   const cardListeners = new Set<() => void>()
   /**
-   * The injected face both card registrations hand to the slot renderer: the
+   * The injected face the card registration hands to the slot renderer: the
    * settings Remote plus the external-invalidation subscription.
    */
   const cardInject = (): Record<string, unknown> => ({
@@ -179,10 +147,8 @@ export function apply(ctx: ClientContext): void {
     },
   })
 
-  // DSH 0.1.7+: a bundle's own configuration registers into the keyed
-  // plugins.bundle.config slot under its package name and renders on the
-  // package's Plugins-page detail view. On 0.1.5 the slot is never declared
-  // and this registration simply never runs.
+  // A bundle's own configuration renders on its Plugins-page detail view.
+  // slots.inject waits until the page declares the keyed slot.
   ctx.effect(() => {
     const slots = (ctx as unknown as { slots?: SlotRegistrarFace }).slots
     if (slots === undefined || typeof slots.inject !== 'function') return
@@ -195,67 +161,6 @@ export function apply(ctx: ClientContext): void {
         inject: cardInject,
       }, HeadersCard))
   }, 'dsh-custom-headers: bundle configuration card')
-
-  // DSH 0.1.5: the sanctioned `settings.plugin.item` slot is keyed by
-  // settings namespace; the host half registers `custom-headers`, this card
-  // claims it, and the official tab pairs the two. On 0.1.7+ the slot is
-  // retired (never declared) and this registration never runs.
-  ctx.effect(() => {
-    const slots = (ctx as unknown as { slots?: SlotRegistrarFace }).slots
-    if (slots === undefined || typeof slots.entries !== 'function' || typeof slots.subscribe !== 'function') return
-    let disposeCard: (() => void) | undefined
-    let disposeWatch: (() => void) | undefined
-    let deferTimer: number | undefined
-    const clearDeferral = (): void => {
-      disposeWatch?.()
-      disposeWatch = undefined
-      if (deferTimer !== undefined) {
-        window.clearTimeout(deferTimer)
-        deferTimer = undefined
-      }
-    }
-    const registerCard = (): void => {
-      clearDeferral()
-      if (disposeCard !== undefined) return
-      disposeCard = slots.register({
-        name: 'settings.plugin.item',
-        key: CUSTOM_HEADERS_NS,
-        id: `${PLUGIN_ID}-card`,
-        locale: STORE_NS,
-        inject: cardInject,
-      }, HeadersCard)
-    }
-    /**
-     * Register only once the shipped cards are on the ledger: keyed entries
-     * render in ledger order, so registering while 网页搜索 (web-search) is
-     * present lands this card right below it. A deployment whose composition
-     * lacks that card still gets ours once the defer window elapses.
-     */
-    const attemptRegistration = (): boolean => {
-      const keys = slots.entries('settings.plugin.item').map(entry => entry.options?.key)
-      if (keys.includes(WEB_SEARCH_CARD_KEY)) {
-        registerCard()
-        return true
-      }
-      return false
-    }
-    slots.inject('settings.plugin.item', () => {
-      // The slot owner remounted (redeclaration): the framework re-runs this
-      // registrar against a fresh ledger. Re-defer so the card re-lands below
-      // the shipped cards instead of keeping an earlier position.
-      disposeCard?.()
-      disposeCard = undefined
-      clearDeferral()
-      if (attemptRegistration()) return
-      disposeWatch = slots.subscribe('settings.plugin.item', () => { void attemptRegistration() })
-      deferTimer = window.setTimeout(registerCard, CARD_DEFER_TIMEOUT_MS)
-    })
-    return () => {
-      clearDeferral()
-      disposeCard?.()
-      disposeCard = undefined
-    }
-  }, 'dsh-custom-headers: plugin-configuration card')
 
   // ---- DOM bypass injection (Models page per-model picker) ----
   /** Debounce window for DOM-mutation scans (one scan per render burst). */

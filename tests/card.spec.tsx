@@ -1,6 +1,6 @@
 /**
  * HeadersCard render-level tests over a real React root in jsdom: the
- * fixed-expanded card, profile/header-row editing with + / − buttons, draft
+ * collapsible card, profile/header-row editing with + / − buttons, draft
  * staging, validation gating (case-insensitive duplicate ids), save and
  * discard against a fake settings Remote.
  */
@@ -72,6 +72,12 @@ afterEach(async () => {
   document.body.innerHTML = ''
 })
 
+/** Expand the settings card when its body is currently collapsed. */
+function expandCard(): void {
+  const toggle = container!.querySelector<HTMLButtonElement>('.ch-card-header')!
+  if (toggle.getAttribute('aria-expanded') === 'false') act(() => { toggle.click() })
+}
+
 /** Expand one profile's nested disclosure by its displayed ID. */
 function expandProfile(id: string): void {
   const toggle = Array.from(container!.querySelectorAll<HTMLButtonElement>('.ch-profile-toggle'))
@@ -113,15 +119,20 @@ function type(field: HTMLInputElement, value: string): void {
 const baseSubscribe = (): (() => void) => () => {}
 
 describe('HeadersCard', () => {
-  it('starts expanded with a static header and independent profile disclosures', async () => {
+  it('starts collapsed and exposes independent card and profile disclosures', async () => {
     const { api } = fakeApi([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'acme' }] }])
     await renderCard({ t, api, subscribe: baseSubscribe })
     expect(container!.textContent).toContain(t('cardTitle'))
+    expect(container!.querySelector('.ch-card-body')).toBeNull()
+    const header = container!.querySelector<HTMLButtonElement>('.ch-card-header')!
+    expect(header.tagName).toBe('BUTTON')
+    expect(header.getAttribute('aria-expanded')).toBe('false')
+    expect(header.getAttribute('aria-controls')).toBeTruthy()
+
+    expandCard()
     expect(container!.querySelector('.ch-card-body')).not.toBeNull()
-    const header = container!.querySelector<HTMLElement>('.ch-card-header')!
-    expect(header.tagName).toBe('DIV')
-    expect(header.getAttribute('aria-expanded')).toBeNull()
-    expect(header.querySelector('button')).toBeNull()
+    expect(header.getAttribute('aria-expanded')).toBe('true')
+    expect(container!.querySelector('.ch-card-body')!.id).toBe(header.getAttribute('aria-controls'))
 
     // A loaded profile starts collapsed: only its ID shows, no inputs.
     expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('gw')
@@ -137,11 +148,16 @@ describe('HeadersCard', () => {
     expandProfile('gw')
     expect(container!.querySelector('input[aria-label="ID 1"]')).toBeNull()
     expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('gw')
+
+    act(() => { header.click() })
+    expect(header.getAttribute('aria-expanded')).toBe('false')
+    expect(container!.querySelector('.ch-card-body')).toBeNull()
   })
 
   it('adds a profile and header rows with +, removes them with −', async () => {
     const { api } = fakeApi([])
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     expect(container!.textContent).toContain(t('emptyProfiles'))
 
     act(() => { buttonByText(t('addProfile')).click() })
@@ -166,6 +182,7 @@ describe('HeadersCard', () => {
   it('flags an unrepresentable value on the value input and blocks the save', async () => {
     const { api, mutate } = fakeApi([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'acme' }] }])
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     expandProfile('gw')
     // A non-latin1 character survives text-input sanitization (a newline
     // would not) and Fetch refuses it as a header value.
@@ -181,6 +198,7 @@ describe('HeadersCard', () => {
   it('blocks saving duplicate ids case-insensitively', async () => {
     const { api, mutate } = fakeApi([])
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     act(() => { buttonByText(t('addProfile')).click() })
     act(() => { buttonByText(t('addProfile')).click() })
     type(input('ID 1'), 'Gateway')
@@ -193,6 +211,7 @@ describe('HeadersCard', () => {
   it('saves the staged draft in one mutation and returns to pristine', async () => {
     const { api, mutate, read } = fakeApi([])
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     act(() => { buttonByText(t('addProfile')).click() })
     type(input('ID 1'), 'gw')
     type(input('Header name 1-1'), 'X-Tenant')
@@ -203,14 +222,19 @@ describe('HeadersCard', () => {
     await act(async () => { save.click() })
     expect(mutate).toHaveBeenCalledTimes(1)
     expect(read()).toEqual({ profiles: [{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'acme' }] }] })
-    // Back to pristine: no unsaved tag, save disabled.
+    // A successful save folds both disclosures and returns to pristine.
+    expect(container!.querySelector('.ch-card-header')!.getAttribute('aria-expanded')).toBe('false')
+    expect(container!.querySelector('.ch-card-body')).toBeNull()
     expect(container!.textContent).not.toContain(t('unsaved'))
+    expandCard()
+    expect(container!.querySelector('input[aria-label="ID 1"]')).toBeNull()
     expect(buttonByText(t('save')).disabled).toBe(true)
   })
 
   it('discards the staged draft', async () => {
     const { api } = fakeApi([{ id: 'gw', headers: [] }])
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     expandProfile('gw')
     type(input('ID 1'), 'renamed')
     expect(container!.textContent).toContain(t('unsaved'))
@@ -226,11 +250,13 @@ describe('HeadersCard', () => {
     const { api, mutate } = fakeApi([])
     mutate.mockResolvedValue({ ok: false, error: { code: 'settings/rejected', message: 'nope' } } as never)
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     act(() => { buttonByText(t('addProfile')).click() })
     type(input('ID 1'), 'gw')
     await act(async () => { buttonByText(t('save')).click() })
     expect(container!.textContent).toContain(t('saveFailed'))
     expect(container!.textContent).toContain(t('unsaved'))
+    expect(container!.querySelector('.ch-card-header')!.getAttribute('aria-expanded')).toBe('true')
   })
 
   it('does not let an older load overwrite a newer invalidation snapshot', async () => {
@@ -256,6 +282,7 @@ describe('HeadersCard', () => {
     await renderCard({ t, api, subscribe })
     act(() => { invalidate() })
     await act(async () => { pending[1]?.(response('new')) })
+    expandCard()
     expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('new')
     await act(async () => { pending[0]?.(response('old')) })
     expect(container!.querySelector('.ch-profile-title')!.textContent).toBe('new')
@@ -274,6 +301,7 @@ describe('HeadersCard', () => {
       } as never,
     }))
     await renderCard({ t, api, subscribe: (listener) => { invalidate = listener; return () => {} } })
+    expandCard()
     expandProfile('gw')
     type(input('ID 1'), 'draft')
     expect(buttonByText(t('save')).disabled).toBe(false)
@@ -285,6 +313,7 @@ describe('HeadersCard', () => {
   it('renders read-only when the document refuses writes', async () => {
     const { api } = fakeApi([{ id: 'gw', headers: [] }], { writable: false })
     await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
     expect(container!.textContent).toContain(t('readOnly'))
     expandProfile('gw')
     expect(input('ID 1').disabled).toBe(true)

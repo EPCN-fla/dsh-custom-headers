@@ -21,6 +21,7 @@ export const STYLES = `
 .ch-card:hover { border-color: var(--dsw-alias-label-dimmed); }
 .ch-card-open { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
 .ch-card-header {
+  box-sizing: border-box;
   width: 100%;
   appearance: none;
   border: 0;
@@ -33,7 +34,9 @@ export const STYLES = `
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
+  cursor: pointer;
 }
+.ch-card-header:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
 .ch-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ch-card-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
 .ch-card-description { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
@@ -147,7 +150,7 @@ export const STYLES = `
 .ch-input:disabled { opacity: 0.6; cursor: default; }
 .ch-input-invalid { border-color: var(--dsw-alias-label-error); }
 
-/* ---- Models-page picker: a .modelField row inside the Capacities disclosure ---- */
+/* ---- Models-page picker: a .modelField row inside the Model options disclosure ---- */
 .ch-field { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
 .ch-field-label { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .ch-select-input {

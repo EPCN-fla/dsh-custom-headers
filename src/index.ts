@@ -4,13 +4,9 @@
  * Two jobs:
  *   1. Own the `custom-headers` configuration: named profiles of header
  *      name/value rows, validated on every write (ids unique
- *      case-insensitively, names representable as Fetch headers). Where this
- *      lives depends on the host generation:
- *        - DSH 0.1.7+: the plugin entry's volatile `profiles` Config field,
- *          persisted in the profile's cordis patch and edited live; and
- *        - DSH 0.1.5: the `custom-headers` settings namespace, registered
- *          with write-time validation and persisted in the user settings
- *          document.
+ *      case-insensitively, names representable as Fetch headers). On DSH
+ *      0.2.2-rc.2 this is the plugin entry's volatile `profiles` Config
+ *      field, persisted in the profile's cordis patch and edited live.
  *   2. Apply the picked profile to every matching LLM call. pi-ai resolves
  *      one immutable snapshot per configuration and sends `model.headers`
  *      on the wire for every protocol (options/profile headers win name
@@ -26,7 +22,6 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the webServer/llm/settings service merges into this program's Context.
 import type {} from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-settings'
 import Schema from '@deepseek-ai/schemastery'
 import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
@@ -46,10 +41,6 @@ export const name = PLUGIN_ID
 
 /** Hard dependencies: the loader waits for these before calling apply. */
 export const inject = ['settings', 'llm']
-
-/** The branded settings namespaces this plugin owns (custom-headers) and reads (llm-pi-ai). */
-const OWN_NS = CUSTOM_HEADERS_NS as SettingsNamespace
-const PI_NS = PI_AI_NS as SettingsNamespace
 
 /** One header row as persisted. */
 interface HeaderEntryWire {
@@ -73,16 +64,10 @@ const headerProfile: Schema<HeaderProfileWire> = Schema.object({
   headers: Schema.array(headerEntry).default([]),
 })
 
-/** The `custom-headers` section schema: the profiles list, empty by default. */
-const Section: Schema<CustomHeadersSection> = Schema.object({
-  profiles: Schema.array(headerProfile).default([]),
-})
-
 /**
- * A live configuration cell: DSH 0.1.7 wraps `.volatile()` Config fields in
- * one of these so edits apply without remounting the plugin fiber; DSH 0.1.5
- * resolves the same field to a plain value. Declared structurally so the
- * plugin typechecks against either cordis generation.
+ * A live configuration cell: the target wraps `.volatile()` Config fields in
+ * one of these so edits apply without remounting the plugin fiber. The plain
+ * value arm remains useful for direct composition-base calls.
  */
 export interface VolatileLike<T> {
   get(): T
@@ -91,10 +76,9 @@ export interface VolatileLike<T> {
 /**
  * Plugin configuration, supplied through the profile's cordis layer (the
  * row's `config:` block): a deployment may seed composition-base profiles
- * here; the user layer merges over them. On DSH 0.1.7 the field is volatile,
- * so the resolved value arrives as a live {@link VolatileLike} cell whose
- * `get()` reflects user edits on the next call; on DSH 0.1.5 it is a plain
- * array and user edits ride the `custom-headers` settings namespace instead.
+ * here; the user layer merges over them. The field is volatile, so the
+ * resolved value arrives as a live {@link VolatileLike} cell whose `get()`
+ * reflects user edits on the next call.
  */
 export interface Config {
   /** Composition-base header profiles (default none). */
@@ -103,17 +87,8 @@ export interface Config {
 
 const profilesField: Schema<HeaderProfile[]> = Schema.array(headerProfile).default([])
 
-/**
- * The 0.1.7 settings service admits a profile entry into its live
- * configuration forms only when the Config schema carries a volatile field —
- * and `.volatile()` exists only on the schemastery 0.1.7 ships (3.18.4;
- * 0.1.5-rc.2 ships 3.18.2, where the call is absent). Probe the capability
- * so this same schema builds on both generations: plain field on 0.1.5,
- * volatile (live-editable, no remount) on 0.1.7.
- */
-const liveProfilesField: Schema<HeaderProfile[]> = typeof (profilesField as unknown as { volatile?: unknown }).volatile === 'function'
-  ? (profilesField as unknown as { volatile(): Schema<HeaderProfile[]> }).volatile()
-  : profilesField
+/** Live-edit the profiles through the target settings service without a remount. */
+const liveProfilesField = profilesField.volatile()
 
 /** Schemastery schema: Cordis validates the row config and fills defaults before apply(). */
 export const Config = Schema.object({
@@ -121,29 +96,12 @@ export const Config = Schema.object({
 })
 
 // ---- pi-ai snapshot + settings structural faces (compile-time privacy only;
-// ---- the exact shapes are verified against dsh-v0.1.5-rc.2 and the
-// ---- dsh-v0.1.7-rc.1 – dsh-v0.2.1-rc.2 corridor, and every access fails open
-// ---- so a kernel drift degrades to "no custom headers", never to a broken
-// ---- dispatch). ----
-
-/** The settings service face of DSH 0.1.5: registered namespaces. */
-interface LegacySettingsFace {
-  installSection(
-    owner: unknown,
-    ns: string,
-    schema: unknown,
-    base: CustomHeadersSection,
-    hooks: {
-      validate(value: CustomHeadersSection): void
-      setSource(current: () => CustomHeadersSection): void
-      onChange(): void
-    },
-  ): unknown
-  get(ns: string): unknown
-}
+// ---- the exact shapes are verified against dsh-v0.2.2-rc.2, and every access
+// ---- fails open so kernel drift degrades to "no custom headers", never to a
+// ---- broken dispatch). ----
 
 /**
- * The settings service face of DSH 0.1.7: schema-derived forms over profile
+ * The target settings service face: schema-derived forms over profile
  * plugin entries. `describe()` snapshots every served entry (keyed by row id);
  * `configure()` registers this entry's page policy.
  */
@@ -164,8 +122,8 @@ interface ConfigEditorFace {
   }>
 }
 
-/** The union face: each member is probed before use, never assumed. */
-type SettingsFace = Partial<LegacySettingsFace & SettingsFormsFace>
+/** Optional members are probed before use so a minimal composition can still mount. */
+type SettingsFace = Partial<SettingsFormsFace>
 
 /** The pi-ai models collection: getModel returns the resolved Model descriptor. */
 interface PiAiModelsLike {
@@ -192,7 +150,7 @@ interface AdapterRegistrationLike {
 /** The llm service slice this plugin wraps. */
 interface LlmServiceLike {
   registerAdapter(providers: string[], adapter: unknown): unknown
-  /** Runtime-owned route registry; present in every supported DSH cohort. */
+  /** Runtime-owned route registry on the target host. */
   adapters?: ReadonlyMap<string, AdapterRegistrationLike>
 }
 
@@ -231,9 +189,8 @@ export function stampModelHeaders(model: HeaderCarrier, headers: Record<string, 
 }
 
 /**
- * Read a maybe-volatile configuration field: DSH 0.1.7 hands volatile fields
- * to the plugin as live cells (edits land without a remount), DSH 0.1.5
- * resolves the same field to its plain value.
+ * Read a live configuration cell, or the plain value supplied by a direct
+ * composition-base call.
  * @param value - the resolved Config field.
  */
 function volatileRead<T>(value: T | VolatileLike<T> | undefined): T | undefined {
@@ -263,7 +220,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   let piAiSection: () => unknown
 
   if (typeof settings?.describe === 'function') {
-    // DSH 0.1.7: the settings service projects profile entries' volatile
+    // The target settings service projects profile entries' volatile
     // Config fields; this plugin's profiles live on its own entry config and
     // pi-ai's providers ride the `llm-pi-ai` entry (the shipped row id).
     const forms = settings as SettingsFormsFace
@@ -276,16 +233,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       // The browser half ships the custom card; no schema-derived page.
       ctx.effect(() => forms.configure({ auto: false }, fiber), 'dsh-custom-headers: settings page policy')
     }
-    // Write-time validation, replacing the removed installSection hook: the
-    // loader's internal/config waterfall runs on every entry recompose, and a
-    // throw refuses the change (the settings write surfaces it verbatim).
-    ctx.on('internal/config', function (this: unknown, fiberOrRaw: unknown, next: () => unknown) {
+    // Cordis 4.1 runs this waterfall on every entry recompose. A throw
+    // refuses the write and the settings surface reports it verbatim.
+    ctx.on('internal/config', (changedFiber: unknown, next: () => unknown) => {
       const nextConfig = next()
-      // Cordis 4.0 binds the owning fiber to `this` and passes the raw config
-      // first; Cordis 4.1 passes that fiber as the first argument instead.
-      // Reading both shapes keeps one artifact compatible across the cohorts.
-      const own = this === fiber || fiberOrRaw === fiber
-      if (!own) return nextConfig
+      if (changedFiber !== fiber) return nextConfig
       assertValidProfiles(profilesFromUnknown(isRecord(nextConfig) ? nextConfig['profiles'] : undefined))
       return nextConfig
     })
@@ -294,32 +246,9 @@ export function apply(ctx: Context, config: Config = {}): void {
     ownProfiles = () => normalizeProfiles({ profiles: volatileRead(config.profiles) })
     // The form projection strips fields unknown to the host schema. Read the
     // raw user layer for this plugin's model pick, exactly as the browser's
-    // settings.mutate wrote it; older/minimal hosts retain the describe fallback.
+    // settings.mutate wrote it; a minimal composition retains the describe fallback.
     piAiSection = () => editor?.configuration().find(row => row.entry.options.id === PI_AI_NS)?.override
       ?? forms.describe().find(row => row.ns === PI_AI_NS)?.value
-  } else if (typeof settings?.installSection === 'function') {
-    // DSH 0.1.5: register the owned namespace with write-time validation: a
-    // duplicate id or a Fetch-unrepresentable header name refuses the save,
-    // so an invalid section never reaches the dispatch path below.
-    // installSection hands the source thunk once (at attach, and the
-    // composition fallback at detach) and fires onChange at attach and after
-    // every committed change, so re-reading the thunk in onChange is what
-    // keeps the resolved list current — the dispatch wrapper then reads
-    // `currentProfiles` per call.
-    const legacy = settings as LegacySettingsFace
-    let currentProfiles: readonly HeaderProfile[] = normalizeProfiles(base)
-    let source: () => CustomHeadersSection = () => base
-    legacy.installSection(ctx, OWN_NS, Section, base, {
-      validate: (value) => { assertValidProfiles(value.profiles) },
-      setSource: (current) => {
-        source = current
-      },
-      onChange: () => {
-        currentProfiles = normalizeProfiles(source())
-      },
-    })
-    ownProfiles = () => currentProfiles
-    piAiSection = () => legacy.get(PI_NS)
   } else {
     // No settings service at all (a minimal composition): composition-base
     // profiles still apply; nothing is editable and no model names a pick.

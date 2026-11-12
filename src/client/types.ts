@@ -1,9 +1,7 @@
 /**
- * Wire-surface types the browser half consumes: the settings Remote faces and
- * the slots/locale seams. The consumed wire baseline is the 0.1.5-rc.2
- * kernel (the development cohort compiles against the newest adapted host —
- * currently 0.2.2-rc.1 — whose stub keeps this shape): the browser talks to
- * the generated Typert `ctx.remote.settings` stub — `describe()` takes no
+ * Wire-surface types the browser half consumes on DSH 0.2.2-rc.2: the
+ * settings Remote faces and the slots/locale seams. The browser talks to the
+ * generated Typert `ctx.remote.settings` stub — `describe()` takes no
  * argument, `mutate` takes positional `(ns, ops, expectedRevision)`, and
  * every answer is the envelope `{ok, value | error}` with refusals coded
  * `settings/conflict` / `settings/rejected` / `gateway/*`.
@@ -89,10 +87,6 @@ export interface SlotRegistrarFace {
     inject?: () => Record<string, unknown>
     [extra: string]: unknown
   }, component: unknown): () => void
-  /** Current entries of one slot, in ledger (registration) order. */
-  entries(name: string): ReadonlyArray<{ options?: { key?: string; id?: string; order?: number } }>
-  /** Observe one slot's ledger changes; returns the disposer. */
-  subscribe(name: string, listener: () => void): () => void
 }
 
 /** One result of a settings write. */
