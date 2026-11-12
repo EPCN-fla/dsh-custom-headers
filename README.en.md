@@ -6,11 +6,11 @@ A plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 
 In real deployments, model requests often don't go straight to the provider — they pass through corporate gateways, self-hosted proxies, or OpenAI-compatible endpoints, which commonly demand extra headers (tenant identifiers, billing tags, custom auth spellings), and the demands can differ per model. This plugin turns that into a **per-model, runtime-editable setting**:
 
-1. Define any number of named *header profiles* — each a list of `name / value` pairs — on this package's detail page under **Plugins** (DSH 0.1.7+) or under **Settings → Plugins → Plugin configuration** (DSH 0.1.5);
+1. Define any number of named *header profiles* — each a list of `name / value` pairs — on this package's detail page under **Plugins**;
 2. Pick a profile for a model from a dropdown in the model catalog under **Settings → Models**;
 3. From then on, every call to that model has the profile resolved and its headers stamped onto the request just before the pi-ai adapter dispatches it. The plugin reads live settings, so edits and pick changes reach the very next request — no restart needed.
 
-The plugin has two halves: the host half owns the `custom-headers` configuration (write-time validation, persistence) and the LLM dispatch injection; the Web client half contributes the configuration card and the per-model dropdown. Everything is stored in DSH's own configuration layer (the profile's cordis patch on 0.1.7+, the user settings document on 0.1.5) — no external storage — and unpicking or deleting a profile restores the original behavior on the next call, leaving no trace.
+The plugin has two halves: the host half owns the `custom-headers` configuration (write-time validation, persistence) and the LLM dispatch injection; the Web client half contributes the configuration card and the per-model dropdown. Everything is stored in DSH's own configuration layer (the profile's cordis patch) — no external storage — and unpicking or deleting a profile restores the original behavior on the next call, leaving no trace.
 
 ## Why
 
@@ -26,7 +26,7 @@ Putting these headers in the provider profile sprays them over every model on th
 ## Features
 
 - **Named header profiles**: each profile has an ID plus any number of `header-name` / `value` pairs. IDs must be unique case-insensitively (`Gateway` and `gateway` name the same profile).
-- **Persistent configuration**: profiles live under the `custom-headers` name (in the profile's cordis patch under this plugin row's `config` on 0.1.7+, in the user settings document's same-named namespace on 0.1.5) and survive restarts. Every write is validated on the Host; invalid data (duplicate IDs, header names/values Fetch cannot represent) is refused and reported verbatim.
+- **Persistent configuration**: profiles live under the `custom-headers` name (in the profile's cordis patch under this plugin row's `config`) and survive restarts. Every write is validated on the Host; invalid data (duplicate IDs, header names/values Fetch cannot represent) is refused and reported verbatim.
 - **Per-model selection**: in **Settings → Models → a provider card → model catalog**, every model row shows a header-profile dropdown (`Default` plus every profile ID). The pick is stored as the `headersProfile` field on the model's `llm-pi-ai` settings row and persists with the document.
 - **Applied at call time**: when the model is called, the plugin resolves the profile and stamps the headers onto the request just before the pi-ai adapter dispatches it. Switching back to `Default` — or deleting the profile — restores the original behavior on the very next call.
 
@@ -36,6 +36,7 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 
 | Plugin version | Minimum compatible DSH version | Highest compatible DSH version |
 | --- | --- | --- |
+| 0.5.0 | 0.2.2-rc.2 | 0.2.2-rc.2 |
 | 0.4.4 | 0.1.5-rc.2 | 0.2.2-rc.1 |
 | 0.4.3 | 0.1.5-rc.2 | 0.2.1-rc.5 |
 | 0.4.2 | 0.1.5-rc.2 | 0.2.1-rc.4 |
@@ -44,6 +45,8 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 | 0.3.0 | 0.1.5-rc.2 | 0.2.0-rc.2 |
 | 0.2.0 | 0.1.5-rc.2 | 0.1.7-rc.1 |
 | 0.1.0 | 0.1.5-rc.2 | 0.1.5-rc.3 |
+
+**0.5.0 is a breaking upgrade: it supports only DSH `0.2.2-rc.2` and requires Node.js `>=24.9.0` for every installation and development path. Use plugin `0.4.4` for older DSH versions.**
 
 All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra configuration wiring needed after install.
 
@@ -59,7 +62,7 @@ dsh plugin --profile web add dsh-custom-headers
 dsh plugin --profile web add github:EPCN-fla/dsh-custom-headers
 ```
 
-When installed from a git source, npm runs the package's `prepare` script to build it automatically (requires Node `^22.19.0` or `>=24`).
+When installed from a git source, npm runs the package's `prepare` script to build it automatically (requires Node `>=24.9.0`).
 
 ### From tarball
 
@@ -86,18 +89,17 @@ Restart DSH Web after installing. Confirm the load: `dsh --profile web --dump-co
 
 ### 1. Create a header profile
 
-- **DSH 0.1.7+**: open the **Plugins** page, open the **dsh-custom-headers** detail page — the **Custom headers** card sits between the package description and its rows;
-- **DSH 0.1.5**: open **Settings → Plugins → Plugin configuration** and find the **Custom headers** card below the web-search card.
+Open the **Plugins** page and the **dsh-custom-headers** detail page — the **Custom headers** card sits between the package description and its rows. The card is **collapsed by default**; click its title and description to expand or collapse it.
 
 Expand the card, then:
 
 1. Click **Add profile**; each profile is its own section inside the card — **collapsed by default, showing only its ID**. Click the ID row to expand it.
 2. While expanded, edit the **ID** (e.g. `gateway`), and click **+ Add header** to add `header-name` / `value` rows; the row's **−** button removes a row, **Delete profile** removes the whole profile.
-3. Click **Save**. While the draft is invalid (empty ID, duplicate ID, unrepresentable header name/value), the save button stays disabled and the offending field is flagged inline.
+3. Click **Save**. While the draft is invalid (empty ID, duplicate ID, unrepresentable header name/value), the save button stays disabled and the offending field is flagged inline. A successful save collapses the card and its profiles; a failed save keeps the card expanded and preserves the draft.
 
 ### 2. Pick a profile for a model
 
-Open **Settings → Models**, expand a provider card, and expand a model's **Capacities** disclosure in the model catalog — the **Request headers** dropdown folds together with the capacity fields and appears on the row below **Context window** and **Max output tokens**:
+Open **Settings → Models**, expand a provider card, and expand a model's **Model options** disclosure in the model catalog — the **Request headers** dropdown folds together with the model options and appears on the row below **Context window** and **Max output tokens**:
 
 - **Default**: no custom headers (the initial state).
 - A profile ID: subsequent calls to that model carry the profile's headers.
@@ -112,7 +114,7 @@ Open **Settings → Models**, expand a provider card, and expand a model's **Cap
 
 ## Storage format
 
-The user layer under the `custom-headers` name (in the profile's cordis patch under this plugin row's `config` on DSH 0.1.7+; in the user settings document's same-named namespace on DSH 0.1.5. The first 0.1.7 boot imports a legacy `settings.yaml` `custom-headers` section onto this plugin's row automatically):
+The user layer under the `custom-headers` name lives in the profile's cordis patch under this plugin row's `config`:
 
 ```yaml
 custom-headers:
@@ -153,8 +155,7 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 
 - Only calls served by the **pi-ai adapter** (`llm-pi-ai` provider routes, including hand-declared custom providers) are affected; other adapter families (e.g. `deepseek-official`) do not pass through this dispatch path and picks are not applied to them.
 - Headers apply to the model's **actual LLM requests**. Configuration-time discovery ("fetch model list from the endpoint") keeps using the provider profile's own headers and does not attach per-model picks.
-- The dropdown is injected into the official Models page's per-row Model options disclosure (called Capacities on DSH 0.1.5) through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the 0.1.5-rc.2 and 0.1.7-rc.1 – 0.2.2-rc.1 page structures (the disclosure label is resolved per generation through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
-- (DSH 0.1.5 only) The card's position on the Plugin configuration tab depends on the shipped web-search card's registration: this plugin waits for it on the slot ledger before registering (with a ~10s fallback timeout); if a deployment strips the shipped plugins package, the card still registers, at whatever position the ledger has then. On DSH 0.1.7+ the card lives on this package's detail page and has no position dependency.
+- The dropdown is injected into the official Models page's per-row **Model options** disclosure through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the DSH `0.2.2-rc.2` page structure (the disclosure label is resolved through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
 - The picker writes only explicit `models` rows in `llm-pi-ai`. Rows inherited entirely from an installed catalog without a writable explicit model entry remain disabled; the plugin does not guess a `modelOverrides` write target.
 - Repeated header names within one profile resolve last-wins, case-insensitively (Fetch `Headers` semantics).
 
@@ -174,15 +175,15 @@ All tests live in `tests/`:
 | File | Coverage |
 |---|---|
 | `tests/headers.spec.ts` | Validation, normalization, resolution, and model-row pick reading (pure logic) |
-| `tests/host.spec.ts` | Both settings generations (0.1.5 namespace registration / 0.1.7 volatile config), adapter wrapping, per-call snapshot isolation, interleaving, registration rollback, teardown |
+| `tests/host.spec.ts` | DSH 0.2.2-rc.2 settings seam (volatile config), adapter wrapping, per-call snapshot isolation, interleaving, registration rollback, teardown |
 | `tests/pi-ai-wire.spec.ts` | Real pi-ai openai-completions wire: `model.headers` reach the request, collision precedence, auth intact |
 | `tests/ops.spec.ts` | Client settings seams (pick conflict retry, whole-draft CAS, refusal pass-through, blank-row cleanup) |
 | `tests/injector.spec.ts` | Model-row discovery, idempotent/self-healing injection, async generations, draft identity, language anchors |
 | `tests/register.spec.ts` | Card slot registration and real apply() DOM lifecycle (input rescanning, dispose invalidation) |
-| `tests/card.spec.tsx` | Profile card: expand, edit, validation gating, save/discard, load races, read-only |
+| `tests/card.spec.tsx` | Configuration card: default/save-triggered collapse, expansion, editing, validation gating, save/discard, load races, read-only |
 | `tests/select.spec.tsx` | Dropdown: options, writes, missing-profile display, canonical IDs, visible status, disabled states, Chinese copy |
 
-CI runs only for PRs and `v*` tag pushes. PRs read the exact DSH/Cordis/Schemastery matrix from `package.json` → `dshCompatibility` and run static, unit and package checks on Node 22 then 24 for each cohort (a real DSH 0.2.2-rc.1 host requires Node >=24.9.0). Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
+CI runs only for PRs and `v*` tag pushes. PRs read the sole DSH/Cordis/Schemastery cohort from `package.json` → `dshCompatibility` and run static, unit and package checks on Node `24.9.0`. Tags independently run release gates, an explicit build, and npm OIDC publishing without repeating tests. CI does not upload artifacts or create GitHub Releases.
 
 ## License
 

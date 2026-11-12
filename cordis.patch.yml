@@ -4,12 +4,10 @@
 # scanner discovers `dsh.client` and serves `lib/client.js` as
 # `/plugins/dsh-custom-headers/client.js`.
 #
-# The row id is `custom-headers` — NOT the package name — because on DSH
-# 0.1.7 the row id doubles as the plugin's settings namespace (the key the
-# settings Remote and the settings/document-updated event address it by).
-# Keeping the 0.1.5 namespace name means a settings document written by
-# plugin 0.1.x on DSH 0.1.5 — and the one-time settings.yaml import on the
-# first 0.1.7 boot — both land on this entry unchanged.
+# The row id is `custom-headers` — NOT the package name — because it doubles
+# as the plugin's settings namespace (the key the settings Remote and the
+# settings/document-updated event address). Keeping it stable preserves the
+# same cordis config location across plugin upgrades.
 - insert:
     - id: custom-headers
       name: dsh-custom-headers

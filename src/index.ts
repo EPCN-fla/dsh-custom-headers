@@ -150,7 +150,7 @@ interface AdapterRegistrationLike {
 /** The llm service slice this plugin wraps. */
 interface LlmServiceLike {
   registerAdapter(providers: string[], adapter: unknown): unknown
-  /** Runtime-owned route registry; present in every supported DSH cohort. */
+  /** Runtime-owned route registry on the target host. */
   adapters?: ReadonlyMap<string, AdapterRegistrationLike>
 }
 
