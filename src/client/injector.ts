@@ -5,9 +5,9 @@
  *
  * The official Models-page slot contract's sanctioned seats are coarser than
  * a model row, so this plugin mounts its picker as a DOM contribution inside
- * each model row's own disclosure — "Model options" (模型选项) since DSH
- * 0.1.7, "Capacities" (容量) on 0.1.5 — folded away together with the
- * official capacity fields while the row is collapsed, and rendered on the
+ * each model row's own disclosure — "Model options" (模型选项) on DSH
+ * 0.2.2-rc.2 — folded away together with the official fields while the row
+ * is collapsed, and rendered on the
  * row below "上下文窗口" / "最大输出" (grid-column 1/-1) with its own
  * "请求头" label when expanded. Rows are found through the official per-row
  * disclosure button, matched by aria-label prefix in the host's ACTIVE
@@ -42,7 +42,7 @@ export type { SettingsJoin }
  * language first and English last — the host's own fallback floor.
  */
 export interface HostLabels {
-  /** The per-row disclosure button ("Model options"/模型选项 on 0.1.7+, "Capacities"/容量 on 0.1.5). */
+  /** The per-row disclosure button ("Model options"/模型选项). */
   capacity: readonly string[]
   /** The model-id input. */
   modelId: readonly string[]
@@ -55,7 +55,7 @@ interface FoundModel {
   /**
    * The official per-row disclosure container (`.modelAdvanced`, holding the
    * context-window / max-tokens fields) the picker mounts into. It exists
-   * only while the row's "Capacities" disclosure is expanded, so a collapsed
+   * only while the row's "Model options" disclosure is expanded, so a collapsed
    * row carries no picker at all.
    */
   container: HTMLElement
@@ -254,7 +254,7 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
         const row = trigger.closest<HTMLElement>('[class*="modelEntry"]')
         if (row === null) continue
         // Collapsed rows render no disclosure: nothing to mount into, and
-        // nothing to show — the picker folds together with "Capacities".
+        // nothing to show — the picker folds together with "Model options".
         const container = disclosureOf(row)
         if (container === undefined) continue
         const card = cardOf(trigger)

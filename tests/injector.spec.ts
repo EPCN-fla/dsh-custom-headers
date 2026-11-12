@@ -11,7 +11,7 @@ import type { SettingsJoin } from '../src/client/types.js'
 import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS } from '../src/constants.js'
 
 const LABELS: HostLabels = {
-  capacity: ['Capacities'],
+  capacity: ['Model options'],
   modelId: ['Model ID'],
   routeId: ['Provider ID'],
 }
@@ -23,7 +23,7 @@ const t = (key: string): string => key
  * Rows are rendered EXPANDED by default (the official page mounts the
  * `.modelAdvanced` disclosure only while expanded); pass a `{id, collapsed}`
  * entry to render a folded row with no disclosure container. Options can add
- * the reasoning-level controls DSH 0.2.1 renders in the same disclosure.
+ * the reasoning-level controls DSH 0.2.2-rc.2 renders in the same disclosure.
  */
 function editCardHtml(
   route: string,
@@ -31,7 +31,7 @@ function editCardHtml(
   modelIds: Array<string | { id: string; collapsed: true }>,
   options?: { disclosureLabel?: string; reasoning?: boolean },
 ): string {
-  const disclosureLabel = options?.disclosureLabel ?? 'Capacities'
+  const disclosureLabel = options?.disclosureLabel ?? 'Model options'
   const rows = modelIds.map((entry, index) => {
     const id = typeof entry === 'string' ? entry : entry.id
     const collapsed = typeof entry !== 'string' && entry.collapsed === true
@@ -66,7 +66,7 @@ function createCardHtml(routeId: string, modelIds: string[]): string {
     <div class="xmodelEntry">
       <div class="xmodelRow">
         <input aria-label="Model ID ${index + 1}" value="${id}" />
-        <button aria-label="Capacities ${index + 1}"></button>
+        <button aria-label="Model options ${index + 1}"></button>
       </div>
       <div class="xmodelAdvanced"></div>
     </div>`).join('')
@@ -152,13 +152,13 @@ describe('reconcile', () => {
     expect(second?.props.value).toBeUndefined()
   })
 
-  it('mounts alongside the DSH 0.2.1 reasoning controls with the exact model identity', async () => {
+  it('mounts alongside the DSH 0.2.2-rc.2 reasoning controls with the exact model identity', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'], {
       disclosureLabel: 'Model options',
       reasoning: true,
     })
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
-    deps.labels = () => ({ ...LABELS, capacity: ['Model options', 'Capacities'] })
+    deps.labels = () => ({ ...LABELS, capacity: ['Model options'] })
     const state = createScanState()
     reconcile(document.body, deps, state, 'dsh-custom-headers')
     await flush()
@@ -188,7 +188,7 @@ describe('reconcile', () => {
   it('deduplicates a row matched by repeated or aliased disclosure labels', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
-    deps.labels = () => ({ ...LABELS, capacity: ['Capacities', 'Capacities'] })
+    deps.labels = () => ({ ...LABELS, capacity: ['Model options'] })
     const state = createScanState()
     reconcile(document.body, deps, state, 'dsh-custom-headers')
     await flush()
@@ -302,7 +302,7 @@ describe('reconcile', () => {
 
   it('accepts disclosure labels containing selector syntax', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
-    document.querySelector('button[aria-label^="Capacities"]')!.setAttribute('aria-label', 'Model "options 1')
+    document.querySelector('button[aria-label^="Model options"]')!.setAttribute('aria-label', 'Model "options 1')
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
     deps.labels = () => ({ ...LABELS, capacity: ['Model "options'] })
     const state = createScanState()
@@ -340,7 +340,7 @@ describe('reconcile', () => {
     const state = createScanState()
     reconcile(document.body, deps, state, 'dsh-custom-headers')
     await flush()
-    // The row is on the page (its Capacities anchor matched) but collapsed:
+    // The row is on the page (its Model options anchor matched) but collapsed:
     // no disclosure container, no picker.
     expect(mounted.size).toBe(0)
 
@@ -385,13 +385,13 @@ describe('reconcile', () => {
         <div class="xmodelEntry">
           <div class="xmodelRow">
             <input aria-label="模型 ID 1" value="m1" />
-            <button aria-label="容量 1"></button>
+            <button aria-label="模型选项 1"></button>
           </div>
           <div class="xmodelAdvanced"></div>
         </div>
       </div>`
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
-    deps.labels = () => ({ capacity: ['容量', 'Capacities'], modelId: ['模型 ID', 'Model ID'], routeId: ['提供方 ID', 'Provider ID'] })
+    deps.labels = () => ({ capacity: ['模型选项', 'Model options'], modelId: ['模型 ID', 'Model ID'], routeId: ['提供方 ID', 'Provider ID'] })
     reconcile(document.body, deps, createScanState(), 'dsh-custom-headers')
     await flush()
     expect(mounted.size).toBe(1)

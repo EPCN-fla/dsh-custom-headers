@@ -150,7 +150,7 @@ export const STYLES = `
 .ch-input:disabled { opacity: 0.6; cursor: default; }
 .ch-input-invalid { border-color: var(--dsw-alias-label-error); }
 
-/* ---- Models-page picker: a .modelField row inside the Capacities disclosure ---- */
+/* ---- Models-page picker: a .modelField row inside the Model options disclosure ---- */
 .ch-field { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
 .ch-field-label { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
 .ch-select-input {

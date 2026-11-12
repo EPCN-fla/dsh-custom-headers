@@ -1,8 +1,8 @@
 /**
- * The `custom-headers` card inside the official "Plugin configuration"
- * (插件配置) tab: one collapsible card, registered into the
- * `settings.plugin.item` slot keyed by the namespace it edits. The chrome is
- * a 1:1 port of the official PluginCard (header, save/discard footer).
+ * The `custom-headers` card on this package's official Plugins-page detail
+ * view: one collapsible card registered into `plugins.bundle.config` under
+ * the package name. The chrome follows the official PluginCard (header,
+ * save/discard footer).
  * Inside the card, each profile is its own disclosure: collapsed it
  * shows just the ID; expanding reveals the id field and the header
  * name/value rows with their + / − buttons. The whole list saves in one
