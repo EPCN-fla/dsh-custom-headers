@@ -24,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
 import Schema from '@deepseek-ai/schemastery'
-import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
+import { HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
 import {
   assertValidProfiles,
   isRecord,
@@ -145,37 +145,6 @@ interface LlmServiceLike {
 
 type HeaderCarrier = Record<string, unknown>
 
-/**
- * Original `headers` own-property of every resolved model descriptor this
- * plugin has ever stamped, so "no profile" restores the descriptor exactly
- * (a catalog-shipped `headers` block is put back; a bare descriptor is left
- * bare). Keyed on the descriptor object: a settings change rebuilds the
- * pi-ai snapshot and its descriptors, and the stale entries simply die with
- * them.
- */
-const ORIGINAL_HEADERS = new WeakMap<HeaderCarrier, { present: boolean; value: unknown }>()
-
-/**
- * Stamp (or restore) one resolved model descriptor's wire headers.
- * @param model - the resolved pi-ai Model object from the adapter snapshot.
- * @param headers - the effective custom headers, or undefined to restore.
- */
-export function stampModelHeaders(model: HeaderCarrier, headers: Record<string, string> | undefined): void {
-  let original = ORIGINAL_HEADERS.get(model)
-  if (original === undefined) {
-    original = {
-      present: Object.prototype.hasOwnProperty.call(model, 'headers'),
-      value: model['headers'],
-    }
-    ORIGINAL_HEADERS.set(model, original)
-  }
-  if (headers === undefined) {
-    if (original.present) model['headers'] = original.value
-    else delete model['headers']
-    return
-  }
-  model['headers'] = headers
-}
 
 /**
  * Read a live configuration cell, or the plain value supplied by a direct
@@ -413,13 +382,4 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 }
 
-export { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
-export {
-  assertValidProfiles,
-  modelProfileIdOf,
-  normalizeProfiles,
-  profilesFromUnknown,
-  resolveProfileHeaders,
-  validateProfiles,
-} from './headers.js'
 export type { CustomHeadersSection, HeaderEntry, HeaderProfile, ProfileIssue } from './headers.js'

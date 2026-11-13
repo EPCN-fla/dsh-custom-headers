@@ -42,7 +42,14 @@ run('npm', [
   'install', '--no-audit', '--no-fund', '--legacy-peer-deps=false', tarball, ...pinnedCohort,
   'typescript@5.9.3', 'react@18.2.0', 'react-dom@18.2.0', '@types/react@18.3.1', '@types/react-dom@18.3.1',
 ], consumer)
-run('node', ['-e', "import('dsh-custom-headers').then((m) => { if (m.name !== 'dsh-custom-headers') throw new Error('host entry name mismatch') })"], consumer)
+run('node', ['-e', `
+  import('dsh-custom-headers').then((m) => {
+    if (m.name !== 'dsh-custom-headers') throw new Error('host entry name mismatch')
+    const actual = Object.keys(m).sort().join(',')
+    const expected = 'Config,apply,inject,name'
+    if (actual !== expected) throw new Error(\`host entry exports mismatch: \${actual}\`)
+  })
+`], consumer)
 writeFileSync(join(consumer, 'check.mts'), `import { apply as applyHost } from 'dsh-custom-headers'
 import type { RemoteApi } from 'dsh-custom-headers/client'
 import type { Context } from '@deepseek-ai/cordis'

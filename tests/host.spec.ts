@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { attributionHeaders, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { apply, Config as PluginConfig, inject as pluginInject, stampModelHeaders } from '../src/index.js'
+import { apply, Config as PluginConfig, inject as pluginInject } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
 
@@ -428,22 +428,6 @@ describe('runtime adapter registration order', () => {
   })
 })
 
-describe('stampModelHeaders', () => {
-  it('stamps, restores a previously absent property, and restores a present one', () => {
-    const bare: Record<string, unknown> = {}
-    stampModelHeaders(bare, { 'x-a': '1' })
-    expect(bare['headers']).toEqual({ 'x-a': '1' })
-    stampModelHeaders(bare, undefined)
-    expect('headers' in bare).toBe(false)
-
-    const carried = { 'x-cat': '1' }
-    const rich: Record<string, unknown> = { headers: carried }
-    stampModelHeaders(rich, { 'x-a': '1' })
-    expect(rich['headers']).toEqual({ 'x-a': '1' })
-    stampModelHeaders(rich, undefined)
-    expect(rich['headers']).toBe(carried)
-  })
-})
 
 describe('settings forms seam (DSH 0.2.2-rc.2 / rc.3)', () => {
   it('registers the page policy and applies describe() plus the volatile cell', async () => {
