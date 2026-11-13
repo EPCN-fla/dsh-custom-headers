@@ -444,9 +444,8 @@ describe('settings forms seam (DSH 0.2.2-rc.2 / rc.3)', () => {
     expect('headers' in modelObj).toBe(false)
   })
 
-  it('reads model picks from the raw override when form projection drops them', async () => {
-    const projected = { providers: { acme: { models: [{ id: 'm1' }] } } }
-    const harness = makeHarness({ profiles: GW_PROFILES, piValue: projected, piOverride: PI_SECTION })
+  it('uses resolved settings when the raw user override is empty', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION, piOverride: {} })
     const modelObj: Record<string, unknown> = { id: 'm1' }
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)

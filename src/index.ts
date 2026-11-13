@@ -110,17 +110,6 @@ interface SettingsFormsFace {
   describe(): Array<{ ns: string; value: unknown }>
 }
 
-/**
- * The profile editor's raw user layers. Unlike the Settings form projection,
- * these values retain plugin-owned fields that the host's Config schema does
- * not declare (including this plugin's `headersProfile` model pick).
- */
-interface ConfigEditorFace {
-  configuration(): Array<{
-    entry: { options: { id: string } }
-    override: Record<string, unknown>
-  }>
-}
 
 /** Optional members are probed before use so a minimal composition can still mount. */
 type SettingsFace = Partial<SettingsFormsFace>
@@ -224,10 +213,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     // Config fields; this plugin's profiles live on its own entry config and
     // pi-ai's providers ride the `llm-pi-ai` entry (the shipped row id).
     const forms = settings as SettingsFormsFace
-    const context = ctx as unknown as { get?(name: string): unknown }
-    const editor = typeof context.get === 'function'
-      ? context.get('configEditor') as ConfigEditorFace | undefined
-      : undefined
     const fiber = (ctx as { fiber?: unknown }).fiber
     if (typeof forms.configure === 'function' && fiber !== undefined) {
       // The browser half ships the custom card; no schema-derived page.
@@ -244,11 +229,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     // The volatile cell re-reads per call: a user edit reaches the next
     // request without a restart, exactly like pi-ai's own providers.
     ownProfiles = () => normalizeProfiles({ profiles: volatileRead(config.profiles) })
-    // The form projection strips fields unknown to the host schema. Read the
-    // raw user layer for this plugin's model pick, exactly as the browser's
-    // settings.mutate wrote it; a minimal composition retains the describe fallback.
-    piAiSection = () => editor?.configuration().find(row => row.entry.options.id === PI_AI_NS)?.override
-      ?? forms.describe().find(row => row.ns === PI_AI_NS)?.value
+    // Read the resolved, interpolated form value. ConfigEditor.override is
+    // only the raw user patch (often {}), so preferring it would hide picks
+    // supplied by composition-base or inherited layers. The target's dict
+    // projection preserves the plugin-owned model-row headersProfile field.
+    piAiSection = () => forms.describe().find(row => row.ns === PI_AI_NS)?.value
   } else {
     // No settings service at all (a minimal composition): composition-base
     // profiles still apply; nothing is editable and no model names a pick.
