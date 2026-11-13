@@ -200,9 +200,9 @@ export function routeOfCard(
   }
   const title = card.querySelector<HTMLElement>('[class*="editorTitle"], [class*="rowName"]')?.textContent?.trim()
   if (title === undefined || title.length === 0) return undefined
+  if (hasOwn(providers, title)) return { route: title, staged: false }
   const byName = Object.entries(providers).find(([, profile]) => profile['displayName'] === title)
   if (byName !== undefined) return { route: byName[0], staged: false }
-  if (hasOwn(providers, title)) return { route: title, staged: false }
   return undefined
 }
 

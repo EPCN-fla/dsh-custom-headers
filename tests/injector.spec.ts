@@ -414,6 +414,13 @@ describe('routeOfCard', () => {
     expect(routeOfCard(card, { ...PROVIDERS, fresh: { models: [] } }, LABELS)).toBeUndefined()
   })
 
+  it('prefers a bare exact route key over another route\'s display name', () => {
+    document.body.innerHTML = '<div class="xrowCard"><span class="xrowName">acme</span></div>'
+    const card = document.querySelector<HTMLElement>('.xrowCard')!
+    const providers = { 'gw-1': { displayName: 'acme', models: [] }, acme: { models: [] } }
+    expect(routeOfCard(card, providers, LABELS)).toEqual({ route: 'acme', staged: false })
+  })
+
   it('falls back to the display-name title and the bare route-key title', () => {
     document.body.innerHTML = '<div class="xrowCard"><span class="xrowName">Acme</span></div>'
     const card = document.querySelector<HTMLElement>('.xrowCard')!
