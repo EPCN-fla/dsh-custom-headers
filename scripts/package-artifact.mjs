@@ -69,9 +69,15 @@ run(join(consumer, 'node_modules/.bin/tsc'), [
 run('node', ['-e', `
   const fs = require('fs')
   const path = require.resolve('dsh-custom-headers/client')
-  const head = fs.readFileSync(path, 'utf8').slice(0, 200)
-  if (!head.startsWith('window.__ModuleLoader__.load({')) throw new Error('client wrapper missing')
-  if (!head.includes('id: "dsh-custom-headers"')) throw new Error('client module id mismatch')
+  const source = fs.readFileSync(path, 'utf8')
+  let registration
+  const window = { __ModuleLoader__: { load(value) { registration = value } } }
+  new Function('window', source)(window)
+  if (registration?.id !== 'dsh-custom-headers') throw new Error('client module id mismatch')
+  const client = registration.factory(require)
+  if (client.name !== 'dsh-custom-headers' || typeof client.apply !== 'function') {
+    throw new Error('client factory exports mismatch')
+  }
   console.log('artifact OK:', require('dsh-custom-headers/package.json').version)
 `], consumer)
 console.log(`Package artifact passed: ${pkg.name}@${pkg.version}`)
