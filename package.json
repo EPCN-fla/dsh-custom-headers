@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-headers",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Per-model custom request headers for DeepSeek Harness: define named header profiles on the plugin detail page, pick one per model in the provider model catalog, and send those headers with every call to that model.",
   "icon": "./icon.svg",
   "license": "MIT",
