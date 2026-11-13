@@ -14,6 +14,9 @@ function fixture(fn) {
   const root = mkdtempSync(join(tmpdir(), 'headers-ci-'))
   try {
     writeFileSync(join(root, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ packages: {
+      'node_modules/@deepseek-ai/dsh-authorization': { version: '0.2.2-rc.2' },
+    } }))
     return fn(root)
   } finally { rmSync(root, { recursive: true, force: true }) }
 }
@@ -21,26 +24,48 @@ const run = (root, name, args, env = {}) => spawnSync(process.execPath, [script(
   cwd: root, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: '', GITHUB_STEP_SUMMARY: '', ...env }, timeout: 10000,
 })
 
-test('compatibility matrix checks the exact declared development cohort without rewriting it', () => fixture(root => {
+test('compatibility matrix selects only DSH, Cordis and Schemastery development dependencies', () => fixture(root => {
   const matrix = run(root, 'ci-compatibility.mjs', ['matrix'])
   assert.equal(matrix.status, 0, matrix.stderr)
-  assert.deepEqual(Object.keys(manifest.dshCompatibility), ['0.2.2-rc.2'])
+  assert.deepEqual(Object.keys(manifest.dshCompatibility), ['0.2.2-rc.2', '0.2.2-rc.3'])
   assert.equal(manifest.engines.node, '>=24.9.0')
-  assert.deepEqual(JSON.parse(matrix.stdout), { 'dsh-version': ['0.2.2-rc.2'] })
-  const before = readFileSync(join(root, 'package.json'), 'utf8')
-  for (const version of Object.keys(manifest.dshCompatibility)) {
-    const result = run(root, 'ci-compatibility.mjs', ['check', version])
-    assert.equal(result.status, 0, result.stderr)
-    assert.equal(result.stdout.trim(), `cohort=${version}`)
-    assert.equal(readFileSync(join(root, 'package.json'), 'utf8'), before)
+  assert.deepEqual(JSON.parse(matrix.stdout), { 'dsh-version': ['0.2.2-rc.2', '0.2.2-rc.3'] })
+  for (const name of ['@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-settings']) {
+    assert.equal(manifest.peerDependencies[name], '0.2.2-rc.2 || 0.2.2-rc.3')
   }
-  assert.notEqual(run(root, 'ci-compatibility.mjs', ['check', 'latest']).status, 0)
-  const drifted = JSON.parse(before)
-  drifted.devDependencies['@deepseek-ai/dsh-settings'] = '0.2.2-rc.1'
-  writeFileSync(join(root, 'package.json'), JSON.stringify(drifted))
-  const mismatch = run(root, 'ci-compatibility.mjs', ['check', '0.2.2-rc.2'])
-  assert.notEqual(mismatch.status, 0)
-  assert.match(mismatch.stderr, /@deepseek-ai\/dsh-settings/)
+  const defaultVersion = Object.keys(manifest.dshCompatibility).at(-1)
+  const cleanDefault = structuredClone(manifest)
+  delete cleanDefault.overrides
+  for (const name of Object.keys(cleanDefault.devDependencies)) {
+    if (name.startsWith('@deepseek-ai/dsh-')) cleanDefault.devDependencies[name] = defaultVersion
+  }
+  cleanDefault.devDependencies['@deepseek-ai/cordis'] = manifest.dshCompatibility[defaultVersion].cordis
+  cleanDefault.devDependencies['@deepseek-ai/schemastery'] = manifest.dshCompatibility[defaultVersion].schemastery
+  writeFileSync(join(root, 'package.json'), JSON.stringify(cleanDefault))
+  const beforeDefault = readFileSync(join(root, 'package.json'), 'utf8')
+  const defaultSelection = run(root, 'ci-compatibility.mjs', ['select', defaultVersion])
+  assert.equal(defaultSelection.status, 0, defaultSelection.stderr)
+  assert.equal(defaultSelection.stdout.trim(), 'changed=false')
+  assert.equal(readFileSync(join(root, 'package.json'), 'utf8'), beforeDefault)
+  for (const version of Object.keys(manifest.dshCompatibility)) {
+    const result = run(root, 'ci-compatibility.mjs', ['select', version])
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout.trim(), 'changed=true')
+    const selected = JSON.parse(readFileSync(join(root, 'package.json')))
+    for (const [name, value] of Object.entries(manifest.devDependencies)) {
+      const expected = name.startsWith('@deepseek-ai/dsh-') ? version
+        : name === '@deepseek-ai/cordis' ? manifest.dshCompatibility[version].cordis
+          : name === '@deepseek-ai/schemastery' ? manifest.dshCompatibility[version].schemastery : value
+      assert.equal(selected.devDependencies[name], expected)
+    }
+    assert.deepEqual(selected.peerDependencies, manifest.peerDependencies)
+    assert.equal(selected.overrides['@deepseek-ai/dsh-authorization'], version)
+    assert.equal(Object.hasOwn(selected.overrides, '@deepseek-ai/dsh-invariants'), false)
+    assert.equal(selected.overrides['@deepseek-ai/cordis'], manifest.dshCompatibility[version].cordis)
+    assert.equal(selected.overrides['@deepseek-ai/schemastery'], manifest.dshCompatibility[version].schemastery)
+    assert.equal(run(root, 'ci-compatibility.mjs', ['select', version]).stdout.trim(), 'changed=false')
+  }
+  assert.notEqual(run(root, 'ci-compatibility.mjs', ['select', 'latest']).status, 0)
 }))
 
 test('compatibility reader rejects empty, ranged and malformed metadata', () => fixture(root => {
@@ -91,12 +116,17 @@ test('workflow uses only Node 24 and pins npm before dependency resolution', () 
   }
 })
 
-test('workflow installs and checks only the committed target cohort', () => {
+test('cohort selection resolves a replacement DSH lock without the committed lock', () => {
   const workflow = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
   const run = workflow.jobs.verify.steps.find(step => step.id === 'cohort').run
   assert.match(run, /npm ci --ignore-scripts --legacy-peer-deps=false/)
-  assert.match(run, /node scripts\/ci-compatibility\.mjs check "\$DSH_TEST_VERSION"/)
-  assert.doesNotMatch(run, /select|override|changed=true/)
+  assert.match(run, /node scripts\/ci-compatibility\.mjs select "\$DSH_TEST_VERSION"/)
+  const moveTree = run.indexOf('mv node_modules artifacts/ci/committed-node_modules')
+  const moveLock = run.indexOf('mv package-lock.json artifacts/ci/committed-package-lock.json')
+  const resolve = run.indexOf('npm install --package-lock-only')
+  assert.ok(moveTree >= 0, 'committed node_modules must be moved aside')
+  assert.ok(moveLock > moveTree, 'committed lockfile must also be moved aside')
+  assert.ok(resolve > moveLock, 'replacement resolution must start after the old lockfile is removed')
 })
 
 test('workflow isolates PR validation from tag-only publishing with no artifact uploads', () => {

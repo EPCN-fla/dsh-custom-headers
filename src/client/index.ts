@@ -1,5 +1,5 @@
 /**
- * Browser half of dsh-custom-headers on DSH 0.2.2-rc.2.
+ * Browser half of dsh-custom-headers on DSH 0.2.2-rc.2 / rc.3.
  *
  * Contributions, all of which dispose with the plugin fiber:
  *   1. The "自定义请求头" / "Custom headers" configuration card in the

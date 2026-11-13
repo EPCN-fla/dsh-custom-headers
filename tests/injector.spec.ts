@@ -23,7 +23,7 @@ const t = (key: string): string => key
  * Rows are rendered EXPANDED by default (the official page mounts the
  * `.modelAdvanced` disclosure only while expanded); pass a `{id, collapsed}`
  * entry to render a folded row with no disclosure container. Options can add
- * the reasoning-level controls DSH 0.2.2-rc.2 renders in the same disclosure.
+ * the reasoning-level controls DSH 0.2.2-rc.2 / rc.3 renders in the same disclosure.
  */
 function editCardHtml(
   route: string,
@@ -152,7 +152,7 @@ describe('reconcile', () => {
     expect(second?.props.value).toBeUndefined()
   })
 
-  it('mounts alongside the DSH 0.2.2-rc.2 reasoning controls with the exact model identity', async () => {
+  it('mounts alongside the DSH 0.2.2-rc.2 / rc.3 reasoning controls with the exact model identity', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'], {
       disclosureLabel: 'Model options',
       reasoning: true,

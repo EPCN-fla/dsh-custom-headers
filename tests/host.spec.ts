@@ -1,5 +1,5 @@
 /**
- * Host-half behavior on the DSH 0.2.2-rc.2 contracts: settings-form
+ * Host-half behavior on the DSH 0.2.2-rc.2 / rc.3 contracts: settings-form
  * validation, adapter registration wrapping, per-call header snapshots,
  * restoration of untouched descriptors, and fiber teardown.
  */
@@ -431,7 +431,7 @@ describe('stampModelHeaders', () => {
   })
 })
 
-describe('settings forms seam (DSH 0.2.2-rc.2)', () => {
+describe('settings forms seam (DSH 0.2.2-rc.2 / rc.3)', () => {
   it('registers the page policy and applies describe() plus the volatile cell', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
     expect(harness.configured).toEqual([{ auto: false }])

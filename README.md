@@ -36,6 +36,7 @@ DSH 的提供方资料（provider profile）本身支持 `headers`，但它作�
 
 | 插件版本 | 最低适配的 DSH 版本 | 最高适配的 DSH 版本 |
 | --- | --- | --- |
+| 0.5.1 | 0.2.2-rc.2 | 0.2.2-rc.3 |
 | 0.5.0 | 0.2.2-rc.2 | 0.2.2-rc.2 |
 | 0.4.4 | 0.1.5-rc.2 | 0.2.2-rc.1 |
 | 0.4.3 | 0.1.5-rc.2 | 0.2.1-rc.5 |
@@ -46,7 +47,7 @@ DSH 的提供方资料（provider profile）本身支持 `headers`，但它作�
 | 0.2.0 | 0.1.5-rc.2 | 0.1.7-rc.1 |
 | 0.1.0 | 0.1.5-rc.2 | 0.1.5-rc.3 |
 
-**0.5.0 是破坏性升级：仅支持 DSH `0.2.2-rc.2`，所有安装与开发方式均要求 Node.js `>=24.9.0`；旧版 DSH 请使用插件 `0.4.4`。**
+**0.5.1 支持 DSH `0.2.2-rc.2` 与 `0.2.2-rc.3`，所有安装与开发方式均要求 Node.js `>=24.9.0`；旧版 DSH 请使用插件 `0.4.4`。0.5.0 仅支持 DSH `0.2.2-rc.2`。**
 
 三种方式都通过 DSH CLI 把插件加入指定的 Profile（这里以 `web` 为例，按需替换）。本包自带 `cordis.patch.yml`，组合器会自动挂载 host 半端，并向 Web 客户端提供 `/plugins/dsh-custom-headers/client.js`——安装后无需额外的组合配置。
 
@@ -155,7 +156,7 @@ llm-pi-ai:
 
 - 仅对 **pi-ai 适配器**（`llm-pi-ai` 提供方路由，含手工声明的自定义提供方）的调用生效；其他适配器家族（如 `deepseek-official`）不经过该连线路径，选择不会被应用。
 - 请求头应用于模型的**实际 LLM 请求**；「从端点获取模型列表」等配置期发现请求沿用提供方资料自身的头，不附加模型级配置。
-- 下拉框通过 DOM 锚定注入到官方模型页面每行的「模型选项」折叠区内（官方槽位没有模型行级扩展点）。已按 DSH `0.2.2-rc.2` 的页面结构（折叠区名称经宿主词典解析，区内控件可随宿主能力增减）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
+- 下拉框通过 DOM 锚定注入到官方模型页面每行的「模型选项」折叠区内（官方槽位没有模型行级扩展点）。已按 DSH `0.2.2-rc.2` / `0.2.2-rc.3` 的页面结构（折叠区名称经宿主词典解析，区内控件可随宿主能力增减）做了防御式适配：官方页面结构若发生变化，插件会停止注入而不影响页面本身。
 - 选择器只写入 `llm-pi-ai` 中显式 `models` 行；完全继承 installed catalog、但没有可写显式模型行的条目会保持禁用，当前不通过 `modelOverrides` 猜测写入目标。
 - 同名请求头在一个配置内重复出现时，按大小写不敏感「后者覆盖前者」处理（Fetch `Headers` 语义）。
 
@@ -175,7 +176,7 @@ npm run pack:check # 打包并以精确 cohort 严格消费产物与公开类型
 | 文件 | 覆盖 |
 |---|---|
 | `tests/headers.spec.ts` | 校验、归一化、解析、模型行选择读取等纯逻辑 |
-| `tests/host.spec.ts` | DSH 0.2.2-rc.2 设置 seam（volatile 配置）、适配器包装、每调用 snapshot 隔离、交错调用、注册失败回滚与卸载清理 |
+| `tests/host.spec.ts` | DSH 0.2.2-rc.2 / rc.3 设置 seam（volatile 配置）、适配器包装、每调用 snapshot 隔离、交错调用、注册失败回滚与卸载清理 |
 | `tests/pi-ai-wire.spec.ts` | 真实 pi-ai openai-completions 连线：`model.headers` 到达请求、冲突优先级、认证保持 |
 | `tests/ops.spec.ts` | 客户端设置读写（选择冲突重试、整表草稿 CAS、拒绝透传、空行清理） |
 | `tests/injector.spec.ts` | 模型行发现、幂等/自愈注入、异步代次、草稿身份、语言锚点 |
@@ -183,7 +184,7 @@ npm run pack:check # 打包并以精确 cohort 严格消费产物与公开类型
 | `tests/card.spec.tsx` | 配置卡片：默认折叠、展开、保存后折叠、编辑、校验拦截、保存/放弃、加载竞态、只读 |
 | `tests/select.spec.tsx` | 下拉框：选项、写入、已删除配置显示、canonical ID、可见状态、禁用态、中文文案 |
 
-CI 仅在 PR 和 `v*` 标签推送时运行。PR 从 `package.json` 的 `dshCompatibility` 读取唯一的 DSH/Cordis/Schemastery cohort，在 Node `24.9.0` 上运行静态、单元与打包检查；标签独立执行发布门禁、显式构建和 npm OIDC 发布，不重复运行测试。CI 不上传 artifacts 或创建 GitHub Release。
+CI 仅在 PR 和 `v*` 标签推送时运行。PR 从 `package.json` 的 `dshCompatibility` 读取每个精确 DSH/Cordis/Schemastery cohort，逐版本选择依赖并在 Node `24.9.0` 上运行静态、单元与打包检查；标签独立执行发布门禁、显式构建和 npm OIDC 发布，不重复运行测试。CI 不上传 artifacts 或创建 GitHub Release。
 
 ## 许可证
 

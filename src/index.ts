@@ -5,7 +5,7 @@
  *   1. Own the `custom-headers` configuration: named profiles of header
  *      name/value rows, validated on every write (ids unique
  *      case-insensitively, names representable as Fetch headers). On DSH
- *      0.2.2-rc.2 this is the plugin entry's volatile `profiles` Config
+ *      0.2.2-rc.2 / rc.3 this is the plugin entry's volatile `profiles` Config
  *      field, persisted in the profile's cordis patch and edited live.
  *   2. Apply the picked profile to every matching LLM call. pi-ai resolves
  *      one immutable snapshot per configuration and sends `model.headers`
@@ -96,7 +96,7 @@ export const Config = Schema.object({
 })
 
 // ---- pi-ai snapshot + settings structural faces (compile-time privacy only;
-// ---- the exact shapes are verified against dsh-v0.2.2-rc.2, and every access
+// ---- the exact shapes are verified against dsh-v0.2.2-rc.2 / rc.3, and every access
 // ---- fails open so kernel drift degrades to "no custom headers", never to a
 // ---- broken dispatch). ----
 

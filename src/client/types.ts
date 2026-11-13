@@ -1,5 +1,5 @@
 /**
- * Wire-surface types the browser half consumes on DSH 0.2.2-rc.2: the
+ * Wire-surface types the browser half consumes on DSH 0.2.2-rc.2 / rc.3: the
  * settings Remote faces and the slots/locale seams. The browser talks to the
  * generated Typert `ctx.remote.settings` stub — `describe()` takes no
  * argument, `mutate` takes positional `(ns, ops, expectedRevision)`, and

@@ -6,7 +6,7 @@
  * The official Models-page slot contract's sanctioned seats are coarser than
  * a model row, so this plugin mounts its picker as a DOM contribution inside
  * each model row's own disclosure — "Model options" (模型选项) on DSH
- * 0.2.2-rc.2 — folded away together with the official fields while the row
+ * 0.2.2-rc.2 / rc.3 — folded away together with the official fields while the row
  * is collapsed, and rendered on the
  * row below "上下文窗口" / "最大输出" (grid-column 1/-1) with its own
  * "请求头" label when expanded. Rows are found through the official per-row
