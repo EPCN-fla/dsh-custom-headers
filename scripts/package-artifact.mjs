@@ -24,6 +24,10 @@ const contents = run('tar', ['-tf', tarball]).stdout
 if (!contents.includes('package/cordis.patch.yml\n')) throw new Error('cordis.patch.yml missing from the artifact')
 if (pkg.icon !== './icon.svg') throw new Error('package icon declaration missing or unexpected')
 if (!contents.includes('package/icon.svg\n')) throw new Error('icon.svg missing from the artifact')
+const clientDeclarations = readFileSync('lib/client/index.d.ts', 'utf8')
+if (/from ['"][^'"]+\.tsx?['"]/.test(clientDeclarations)) {
+  throw new Error('public declarations contain non-portable TypeScript source extensions')
+}
 if (contents.split('\n').some(name => /(?:^|\/)src\//.test(name) || /\.(?:ts|tsx)$/.test(name) && !/\.d\.ts$/.test(name))) {
   throw new Error('TypeScript sources leaked into the artifact')
 }
