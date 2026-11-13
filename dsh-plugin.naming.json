@@ -9,7 +9,7 @@
   },
   "names": {
     "pluginNames": ["dsh-custom-headers"],
-    "loaderIds": ["dsh-custom-headers"],
+    "loaderIds": ["custom-headers"],
     "services": [],
     "tools": [],
     "commands": [],

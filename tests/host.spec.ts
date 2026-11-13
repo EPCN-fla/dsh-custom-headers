@@ -1,5 +1,5 @@
 /**
- * Host-half behavior on the DSH 0.2.2-rc.2 contracts: settings-form
+ * Host-half behavior on the DSH 0.2.2-rc.2 / rc.3 contracts: settings-form
  * validation, adapter registration wrapping, per-call header snapshots,
  * restoration of untouched descriptors, and fiber teardown.
  */
@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { attributionHeaders, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { apply, Config as PluginConfig, inject as pluginInject, stampModelHeaders } from '../src/index.js'
+import { apply, Config as PluginConfig, inject as pluginInject } from '../src/index.js'
 import { CUSTOM_HEADERS_NS, PI_AI_NS } from '../src/constants.js'
 import type { HeaderProfile } from '../src/headers.js'
 
@@ -327,6 +327,20 @@ describe('dispatch header snapshots', () => {
     expect(modelObj['headers']).toBe(catalogHeaders)
   })
 
+  it('bypasses injection after dispose when a later wrapper remains installed', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    const adapter = makePiAdapter({ 'acme/m1': { id: 'm1' } })
+    harness.llm.registerAdapter(['acme'], adapter)
+    const ours = adapter.stream
+    const ourCurrent = adapter.current
+    adapter.stream = function (options) { return ours.call(this, options) }
+    adapter.current = function () { return ourCurrent.call(this) }
+
+    for (const dispose of harness.disposers) dispose()
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
+  })
+
   it('rolls back a newly wrapped adapter when registration fails', () => {
     const harness = makeHarness({ registrationError: new Error('duplicate') })
     const adapter = makePiAdapter({})
@@ -414,24 +428,8 @@ describe('runtime adapter registration order', () => {
   })
 })
 
-describe('stampModelHeaders', () => {
-  it('stamps, restores a previously absent property, and restores a present one', () => {
-    const bare: Record<string, unknown> = {}
-    stampModelHeaders(bare, { 'x-a': '1' })
-    expect(bare['headers']).toEqual({ 'x-a': '1' })
-    stampModelHeaders(bare, undefined)
-    expect('headers' in bare).toBe(false)
 
-    const carried = { 'x-cat': '1' }
-    const rich: Record<string, unknown> = { headers: carried }
-    stampModelHeaders(rich, { 'x-a': '1' })
-    expect(rich['headers']).toEqual({ 'x-a': '1' })
-    stampModelHeaders(rich, undefined)
-    expect(rich['headers']).toBe(carried)
-  })
-})
-
-describe('settings forms seam (DSH 0.2.2-rc.2)', () => {
+describe('settings forms seam (DSH 0.2.2-rc.2 / rc.3)', () => {
   it('registers the page policy and applies describe() plus the volatile cell', async () => {
     const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
     expect(harness.configured).toEqual([{ auto: false }])
@@ -444,20 +442,14 @@ describe('settings forms seam (DSH 0.2.2-rc.2)', () => {
     expect('headers' in modelObj).toBe(false)
   })
 
-  it('reads model picks from the raw override when form projection drops them', async () => {
-    const projected = { providers: { acme: { models: [{ id: 'm1' }] } } }
-    const harness = makeHarness({ profiles: GW_PROFILES, piValue: projected, piOverride: PI_SECTION })
+  it('uses resolved settings when the raw user override is empty', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION, piOverride: {} })
     const modelObj: Record<string, unknown> = { id: 'm1' }
     const adapter = makePiAdapter({ 'acme/m1': modelObj })
     harness.llm.registerAdapter(['acme'], adapter)
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
     expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
-    expect('headers' in modelObj).toBe(false)
-
-    harness.setPiOverride(projected)
-    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
     expect('headers' in modelObj).toBe(false)
   })
 

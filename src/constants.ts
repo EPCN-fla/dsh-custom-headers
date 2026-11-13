@@ -14,7 +14,7 @@ export const PLUGIN_ID = 'dsh-custom-headers'
 
 /**
  * The settings namespace this plugin OWNS: named custom-header profiles,
- * edited from the plugin's configuration card. On DSH 0.2.2-rc.2 this is
+ * edited from the plugin's configuration card. On DSH 0.2.2-rc.2 / rc.3 this is
  * the plugin's cordis row id, whose volatile Config field the settings
  * service serves. Keeping the row id stable preserves existing profile data.
  */

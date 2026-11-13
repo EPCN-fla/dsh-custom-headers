@@ -1,5 +1,5 @@
 /**
- * Browser half of dsh-custom-headers on DSH 0.2.2-rc.2.
+ * Browser half of dsh-custom-headers on DSH 0.2.2-rc.2 / rc.3.
  *
  * Contributions, all of which dispose with the plugin fiber:
  *   1. The "自定义请求头" / "Custom headers" configuration card in the
@@ -18,13 +18,13 @@ import { CUSTOM_HEADERS_NS, PI_AI_NS, PLUGIN_ID, STORE_NS } from '../constants.j
 import { Component, createElement } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { HeadersCard } from './HeadersCard.tsx'
-import { LocaleRefresh, type LocaleFace } from './LocaleRefresh.tsx'
-import { ModelHeaderSelect } from './ModelHeaderSelect.tsx'
-import { createScanState, invalidateScanState, reconcile, type HostLabels, type SelectMountProps } from './injector.ts'
-import { en, zh, type ChKey } from './locales.ts'
-import { describeNamespaces, writeProfilePick } from './ops.ts'
-import { STYLES } from './styles.ts'
+import { HeadersCard } from './HeadersCard.js'
+import { LocaleRefresh, type LocaleFace } from './LocaleRefresh.js'
+import { ModelHeaderSelect } from './ModelHeaderSelect.js'
+import { createScanState, invalidateScanState, reconcile, type HostLabels, type SelectMountProps } from './injector.js'
+import { en, zh, type ChKey } from './locales.js'
+import { describeNamespaces, writeProfilePick } from './ops.js'
+import { STYLES } from './styles.js'
 
 /** Stable plugin id (cordis plugin name, bundle id, client module id). The cordis row id is `custom-headers`. */
 export const name = PLUGIN_ID
@@ -260,10 +260,10 @@ export function apply(ctx: ClientContext): void {
 }
 
 export type { ChKey }
-export { HeadersCard } from './HeadersCard.tsx'
-export { ModelHeaderSelect } from './ModelHeaderSelect.tsx'
-export type { ModelHeaderSelectProps } from './ModelHeaderSelect.tsx'
-export { createScanState, invalidateScanState, reconcile, routeOfCard } from './injector.ts'
-export type { HostLabels, InjectorDeps, MountedSelect, ScanState, SelectMountProps } from './injector.ts'
-export * from './ops.ts'
-export * from './types.ts'
+export { HeadersCard } from './HeadersCard.js'
+export { ModelHeaderSelect } from './ModelHeaderSelect.js'
+export type { ModelHeaderSelectProps } from './ModelHeaderSelect.js'
+export { createScanState, invalidateScanState, reconcile, routeOfCard } from './injector.js'
+export type { HostLabels, InjectorDeps, MountedSelect, ScanState, SelectMountProps } from './injector.js'
+export * from './ops.js'
+export * from './types.js'

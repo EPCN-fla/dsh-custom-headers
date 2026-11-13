@@ -5,7 +5,7 @@
  *   1. Own the `custom-headers` configuration: named profiles of header
  *      name/value rows, validated on every write (ids unique
  *      case-insensitively, names representable as Fetch headers). On DSH
- *      0.2.2-rc.2 this is the plugin entry's volatile `profiles` Config
+ *      0.2.2-rc.2 / rc.3 this is the plugin entry's volatile `profiles` Config
  *      field, persisted in the profile's cordis patch and edited live.
  *   2. Apply the picked profile to every matching LLM call. pi-ai resolves
  *      one immutable snapshot per configuration and sends `model.headers`
@@ -24,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-settings'
 import Schema from '@deepseek-ai/schemastery'
-import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
+import { HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
 import {
   assertValidProfiles,
   isRecord,
@@ -96,7 +96,7 @@ export const Config = Schema.object({
 })
 
 // ---- pi-ai snapshot + settings structural faces (compile-time privacy only;
-// ---- the exact shapes are verified against dsh-v0.2.2-rc.2, and every access
+// ---- the exact shapes are verified against dsh-v0.2.2-rc.2 / rc.3, and every access
 // ---- fails open so kernel drift degrades to "no custom headers", never to a
 // ---- broken dispatch). ----
 
@@ -110,17 +110,6 @@ interface SettingsFormsFace {
   describe(): Array<{ ns: string; value: unknown }>
 }
 
-/**
- * The profile editor's raw user layers. Unlike the Settings form projection,
- * these values retain plugin-owned fields that the host's Config schema does
- * not declare (including this plugin's `headersProfile` model pick).
- */
-interface ConfigEditorFace {
-  configuration(): Array<{
-    entry: { options: { id: string } }
-    override: Record<string, unknown>
-  }>
-}
 
 /** Optional members are probed before use so a minimal composition can still mount. */
 type SettingsFace = Partial<SettingsFormsFace>
@@ -156,37 +145,6 @@ interface LlmServiceLike {
 
 type HeaderCarrier = Record<string, unknown>
 
-/**
- * Original `headers` own-property of every resolved model descriptor this
- * plugin has ever stamped, so "no profile" restores the descriptor exactly
- * (a catalog-shipped `headers` block is put back; a bare descriptor is left
- * bare). Keyed on the descriptor object: a settings change rebuilds the
- * pi-ai snapshot and its descriptors, and the stale entries simply die with
- * them.
- */
-const ORIGINAL_HEADERS = new WeakMap<HeaderCarrier, { present: boolean; value: unknown }>()
-
-/**
- * Stamp (or restore) one resolved model descriptor's wire headers.
- * @param model - the resolved pi-ai Model object from the adapter snapshot.
- * @param headers - the effective custom headers, or undefined to restore.
- */
-export function stampModelHeaders(model: HeaderCarrier, headers: Record<string, string> | undefined): void {
-  let original = ORIGINAL_HEADERS.get(model)
-  if (original === undefined) {
-    original = {
-      present: Object.prototype.hasOwnProperty.call(model, 'headers'),
-      value: model['headers'],
-    }
-    ORIGINAL_HEADERS.set(model, original)
-  }
-  if (headers === undefined) {
-    if (original.present) model['headers'] = original.value
-    else delete model['headers']
-    return
-  }
-  model['headers'] = headers
-}
 
 /**
  * Read a live configuration cell, or the plain value supplied by a direct
@@ -224,10 +182,6 @@ export function apply(ctx: Context, config: Config = {}): void {
     // Config fields; this plugin's profiles live on its own entry config and
     // pi-ai's providers ride the `llm-pi-ai` entry (the shipped row id).
     const forms = settings as SettingsFormsFace
-    const context = ctx as unknown as { get?(name: string): unknown }
-    const editor = typeof context.get === 'function'
-      ? context.get('configEditor') as ConfigEditorFace | undefined
-      : undefined
     const fiber = (ctx as { fiber?: unknown }).fiber
     if (typeof forms.configure === 'function' && fiber !== undefined) {
       // The browser half ships the custom card; no schema-derived page.
@@ -244,11 +198,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     // The volatile cell re-reads per call: a user edit reaches the next
     // request without a restart, exactly like pi-ai's own providers.
     ownProfiles = () => normalizeProfiles({ profiles: volatileRead(config.profiles) })
-    // The form projection strips fields unknown to the host schema. Read the
-    // raw user layer for this plugin's model pick, exactly as the browser's
-    // settings.mutate wrote it; a minimal composition retains the describe fallback.
-    piAiSection = () => editor?.configuration().find(row => row.entry.options.id === PI_AI_NS)?.override
-      ?? forms.describe().find(row => row.ns === PI_AI_NS)?.value
+    // Read the resolved, interpolated form value. ConfigEditor.override is
+    // only the raw user patch (often {}), so preferring it would hide picks
+    // supplied by composition-base or inherited layers. The target's dict
+    // projection preserves the plugin-owned model-row headersProfile field.
+    piAiSection = () => forms.describe().find(row => row.ns === PI_AI_NS)?.value
   } else {
     // No settings service at all (a minimal composition): composition-base
     // profiles still apply; nothing is editable and no model names a pick.
@@ -331,6 +285,10 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /** Wrapped adapters and their exact dispatch-entry patches, for fiber teardown. */
   const originals = new Map<PiAiAdapterLike, MethodPatch[]>()
+  // A later plugin may still hold our wrappers in its call chain after
+  // teardown. Restoration deliberately leaves that chain intact, so the
+  // closures must also stop contributing headers on their own.
+  let disposed = false
 
   /**
    * Wrap one pi-ai-shaped adapter. current() synchronously returns a one-call
@@ -353,6 +311,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     let pending: PiAiSnapshotLike | undefined
 
     const dispatch = <T>(provider: string, modelId: string, invoke: () => T): T => {
+      if (disposed) return invoke()
       let override: PiAiSnapshotLike | undefined
       try {
         override = snapshotFor(originalCurrent, candidate, provider, modelId)
@@ -397,6 +356,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     const originalRegister = llm.registerAdapter
     const registerTarget = llm as unknown as HeaderCarrier
     const wrappedRegister = (providers: string[], adapter: unknown): unknown => {
+      if (disposed) return originalRegister.call(llm, providers, adapter)
       const rollback = wrapAdapter(adapter)
       try { return originalRegister.call(llm, providers, adapter) }
       catch (error) {
@@ -412,6 +372,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       for (const registration of llm.adapters.values()) wrapAdapter(registration.adapter)
     }
     ctx.effect(() => () => {
+      disposed = true
       restoreMethod(registerPatch)
       for (const patches of originals.values()) {
         for (const patch of patches) restoreMethod(patch)
@@ -421,13 +382,4 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
 }
 
-export { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS, PLUGIN_ID } from './constants.js'
-export {
-  assertValidProfiles,
-  modelProfileIdOf,
-  normalizeProfiles,
-  profilesFromUnknown,
-  resolveProfileHeaders,
-  validateProfiles,
-} from './headers.js'
 export type { CustomHeadersSection, HeaderEntry, HeaderProfile, ProfileIssue } from './headers.js'

@@ -24,6 +24,10 @@ const contents = run('tar', ['-tf', tarball]).stdout
 if (!contents.includes('package/cordis.patch.yml\n')) throw new Error('cordis.patch.yml missing from the artifact')
 if (pkg.icon !== './icon.svg') throw new Error('package icon declaration missing or unexpected')
 if (!contents.includes('package/icon.svg\n')) throw new Error('icon.svg missing from the artifact')
+const clientDeclarations = readFileSync('lib/client/index.d.ts', 'utf8')
+if (/from ['"][^'"]+\.tsx?['"]/.test(clientDeclarations)) {
+  throw new Error('public declarations contain non-portable TypeScript source extensions')
+}
 if (contents.split('\n').some(name => /(?:^|\/)src\//.test(name) || /\.(?:ts|tsx)$/.test(name) && !/\.d\.ts$/.test(name))) {
   throw new Error('TypeScript sources leaked into the artifact')
 }
@@ -42,7 +46,14 @@ run('npm', [
   'install', '--no-audit', '--no-fund', '--legacy-peer-deps=false', tarball, ...pinnedCohort,
   'typescript@5.9.3', 'react@18.2.0', 'react-dom@18.2.0', '@types/react@18.3.1', '@types/react-dom@18.3.1',
 ], consumer)
-run('node', ['-e', "import('dsh-custom-headers').then((m) => { if (m.name !== 'dsh-custom-headers') throw new Error('host entry name mismatch') })"], consumer)
+run('node', ['-e', `
+  import('dsh-custom-headers').then((m) => {
+    if (m.name !== 'dsh-custom-headers') throw new Error('host entry name mismatch')
+    const actual = Object.keys(m).sort().join(',')
+    const expected = 'Config,apply,inject,name'
+    if (actual !== expected) throw new Error(\`host entry exports mismatch: \${actual}\`)
+  })
+`], consumer)
 writeFileSync(join(consumer, 'check.mts'), `import { apply as applyHost } from 'dsh-custom-headers'
 import type { RemoteApi } from 'dsh-custom-headers/client'
 import type { Context } from '@deepseek-ai/cordis'
@@ -58,9 +69,15 @@ run(join(consumer, 'node_modules/.bin/tsc'), [
 run('node', ['-e', `
   const fs = require('fs')
   const path = require.resolve('dsh-custom-headers/client')
-  const head = fs.readFileSync(path, 'utf8').slice(0, 200)
-  if (!head.startsWith('window.__ModuleLoader__.load({')) throw new Error('client wrapper missing')
-  if (!head.includes('id: "dsh-custom-headers"')) throw new Error('client module id mismatch')
+  const source = fs.readFileSync(path, 'utf8')
+  let registration
+  const window = { __ModuleLoader__: { load(value) { registration = value } } }
+  new Function('window', source)(window)
+  if (registration?.id !== 'dsh-custom-headers') throw new Error('client module id mismatch')
+  const client = registration.factory(require)
+  if (client.name !== 'dsh-custom-headers' || typeof client.apply !== 'function') {
+    throw new Error('client factory exports mismatch')
+  }
   console.log('artifact OK:', require('dsh-custom-headers/package.json').version)
 `], consumer)
 console.log(`Package artifact passed: ${pkg.name}@${pkg.version}`)

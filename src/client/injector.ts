@@ -6,7 +6,7 @@
  * The official Models-page slot contract's sanctioned seats are coarser than
  * a model row, so this plugin mounts its picker as a DOM contribution inside
  * each model row's own disclosure — "Model options" (模型选项) on DSH
- * 0.2.2-rc.2 — folded away together with the official fields while the row
+ * 0.2.2-rc.2 / rc.3 — folded away together with the official fields while the row
  * is collapsed, and rendered on the
  * row below "上下文窗口" / "最大输出" (grid-column 1/-1) with its own
  * "请求头" label when expanded. Rows are found through the official per-row
@@ -200,9 +200,9 @@ export function routeOfCard(
   }
   const title = card.querySelector<HTMLElement>('[class*="editorTitle"], [class*="rowName"]')?.textContent?.trim()
   if (title === undefined || title.length === 0) return undefined
+  if (hasOwn(providers, title)) return { route: title, staged: false }
   const byName = Object.entries(providers).find(([, profile]) => profile['displayName'] === title)
   if (byName !== undefined) return { route: byName[0], staged: false }
-  if (hasOwn(providers, title)) return { route: title, staged: false }
   return undefined
 }
 
@@ -321,11 +321,17 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
       state.mounted.set(target.container, { editor, props: next, savedModelId })
     })
   }
-  // A rejected describe must not permanently disable the injector: clear the
-  // folded promise so the next scan retries the read.
-  void promise.then(run, () => {
+  // A rejected or unavailable describe must not permanently disable the
+  // injector: clear only that folded promise so a later scan retries. Healthy
+  // snapshots remain cached until a pushed invalidation, avoiding an RPC for
+  // every unrelated DOM mutation.
+  const retry = (): void => {
     if (generation === state.generation && state.describePromise === promise) state.describePromise = undefined
-  })
+  }
+  void promise.then(join => {
+    if (join.piAi === undefined || join.customHeaders === undefined) retry()
+    run(join)
+  }, retry)
 }
 
 /** Re-exported so the mount point can label the written field in diagnostics. */

@@ -10,7 +10,7 @@
 import { CUSTOM_HEADERS_NS, HEADERS_PROFILE_FIELD, PI_AI_NS } from '../constants.js'
 import { isRecord, normalizeProfiles, type HeaderProfile } from '../headers.js'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-settings/types'
-import type { RemoteApi, SettingsJoin, SettingsNamespaceView, WriteReply } from './types.js'
+import type { RemoteApi, SettingsJoin, SettingsNamespaceView, WriteProfilesReply, WriteReply } from './types.js'
 
 /**
  * Describe the pi-ai and custom-headers namespaces plus writability through
@@ -142,7 +142,7 @@ export async function writeProfiles(
   profiles: readonly HeaderProfile[],
   describe: () => Promise<SettingsJoin> = () => describeNamespaces(api),
   expectedRevision?: number,
-): Promise<WriteReply> {
+): Promise<WriteProfilesReply> {
   const cleaned = profiles.map(profile => ({
     id: profile.id.trim(),
     headers: profile.headers.filter(entry => entry.name.trim().length > 0 || entry.value.length > 0),
@@ -160,7 +160,7 @@ export async function writeProfiles(
         if (expectedRevision === undefined && attempt === 0 && response.error.code === 'settings/conflict') continue
         return { ok: false, error: response.error.message }
       }
-      return { ok: true }
+      return { ok: true, namespace: response.value }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }

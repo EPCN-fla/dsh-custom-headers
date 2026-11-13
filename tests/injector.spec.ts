@@ -23,7 +23,7 @@ const t = (key: string): string => key
  * Rows are rendered EXPANDED by default (the official page mounts the
  * `.modelAdvanced` disclosure only while expanded); pass a `{id, collapsed}`
  * entry to render a folded row with no disclosure container. Options can add
- * the reasoning-level controls DSH 0.2.2-rc.2 renders in the same disclosure.
+ * the reasoning-level controls DSH 0.2.2-rc.2 / rc.3 renders in the same disclosure.
  */
 function editCardHtml(
   route: string,
@@ -152,7 +152,7 @@ describe('reconcile', () => {
     expect(second?.props.value).toBeUndefined()
   })
 
-  it('mounts alongside the DSH 0.2.2-rc.2 reasoning controls with the exact model identity', async () => {
+  it('mounts alongside the DSH 0.2.2-rc.2 / rc.3 reasoning controls with the exact model identity', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'], {
       disclosureLabel: 'Model options',
       reasoning: true,
@@ -209,6 +209,26 @@ describe('reconcile', () => {
     await flush()
     expect(mounted.size).toBe(0)
     expect(state.mounted.size).toBe(0)
+  })
+
+  it('retries a resolved but unsuccessful describe on the next scan', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    const unavailable: SettingsJoin = { piAi: undefined, customHeaders: undefined, writable: false }
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.describeNamespace = vi.fn()
+      .mockResolvedValueOnce(unavailable)
+      .mockResolvedValueOnce(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect(mounted.size).toBe(0)
+
+    // No pushed invalidation is assumed: an ordinary later scan must recover.
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect(deps.describeNamespace).toHaveBeenCalledTimes(2)
+    expect(mounted.size).toBe(1)
+    expect([...mounted.values()][0]?.props.readOnly).toBe(false)
   })
 
   it('re-renders in place when the stored pick changes', async () => {
@@ -412,6 +432,13 @@ describe('routeOfCard', () => {
     expect(routeOfCard(card, PROVIDERS, LABELS)).toEqual({ route: 'fresh', staged: true })
     // A saved route id in the Provider ID input is not a create card.
     expect(routeOfCard(card, { ...PROVIDERS, fresh: { models: [] } }, LABELS)).toBeUndefined()
+  })
+
+  it('prefers a bare exact route key over another route\'s display name', () => {
+    document.body.innerHTML = '<div class="xrowCard"><span class="xrowName">acme</span></div>'
+    const card = document.querySelector<HTMLElement>('.xrowCard')!
+    const providers = { 'gw-1': { displayName: 'acme', models: [] }, acme: { models: [] } }
+    expect(routeOfCard(card, providers, LABELS)).toEqual({ route: 'acme', staged: false })
   })
 
   it('falls back to the display-name title and the bare route-key title', () => {

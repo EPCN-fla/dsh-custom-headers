@@ -231,6 +231,21 @@ describe('HeadersCard', () => {
     expect(buttonByText(t('save')).disabled).toBe(true)
   })
 
+  it('uses the successful mutation snapshot without a reread race', async () => {
+    const { api } = fakeApi([{ id: 'gw', headers: [{ name: 'X-Tenant', value: 'old' }] }])
+    await renderCard({ t, api, subscribe: baseSubscribe })
+    expandCard()
+    expandProfile('gw')
+    type(input('Value 1-1'), 'new')
+    await act(async () => { buttonByText(t('save')).click() })
+    // One initial load plus writeProfiles' CAS read; no post-save reread.
+    expect(api.settings.describe).toHaveBeenCalledTimes(2)
+    expandCard()
+    expandProfile('gw')
+    expect(input('Value 1-1').value).toBe('new')
+    expect(container!.textContent).not.toContain(t('unsaved'))
+  })
+
   it('discards the staged draft', async () => {
     const { api } = fakeApi([{ id: 'gw', headers: [] }])
     await renderCard({ t, api, subscribe: baseSubscribe })

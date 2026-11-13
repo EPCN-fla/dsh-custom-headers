@@ -110,7 +110,8 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
     mounted.current = true
     const load = async (): Promise<void> => {
       const generation = ++loadGeneration.current
-      const join = await describeNamespaces(api)
+      let join
+      try { join = await describeNamespaces(api) } catch { return }
       if (!mounted.current || generation !== loadGeneration.current) return
       setWritable(join.writable)
       if (join.customHeaders === undefined || draftRef.current !== null) return
@@ -188,18 +189,15 @@ export function HeadersCard(props: HeadersCardProps): ReactNode {
       const reply = await writeProfiles(api, current, undefined, loadedRevision)
       if (!mounted.current) return
       if (reply.ok) {
+        // The mutation response is the authoritative post-save snapshot. Use
+        // it directly instead of opening a second describe race/failure window.
+        loadGeneration.current += 1
+        setLoaded(profilesOf(reply.namespace))
+        setLoadedRevision(reply.namespace.revision)
         setOpen(false)
         setOpenProfiles(flags => flags.map(() => false))
         draftRef.current = null
         setDraft(null)
-        const generation = ++loadGeneration.current
-        const join = await describeNamespaces(api)
-        if (!mounted.current || generation !== loadGeneration.current) return
-        setWritable(join.writable)
-        if (join.customHeaders !== undefined) {
-          setLoaded(profilesOf(join.customHeaders))
-          setLoadedRevision(join.customHeaders.revision)
-        }
       } else {
         setFailed(true)
         console.error(`[dsh-custom-headers] profile save failed: ${reply.error}`)

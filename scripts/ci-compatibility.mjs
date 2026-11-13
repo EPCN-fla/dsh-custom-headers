@@ -1,5 +1,5 @@
 /** Dependency-free CI metadata reader; package.json is the compatibility source. */
-import { readFileSync, appendFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -33,24 +33,46 @@ function main() {
     const matrix = JSON.stringify({ 'dsh-version': Object.keys(entries) })
     console.log(matrix)
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${matrix}\n`)
-  } else if (mode === 'check') {
-    if (!Object.hasOwn(entries, version ?? '')) throw new Error('Checked DSH version is not declared in dshCompatibility')
+  } else if (mode === 'select') {
+    if (!Object.hasOwn(entries, version ?? '')) throw new Error('Selected DSH version is not declared in dshCompatibility')
+    let changed = false
     const dependencies = manifest.devDependencies
     const packages = Object.keys(dependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/dsh-'))
+    const cohortChanged = packages.some(name => dependencies[name] !== version)
+      || dependencies['@deepseek-ai/cordis'] !== entries[version].cordis
+      || dependencies['@deepseek-ai/schemastery'] !== entries[version].schemastery
     if (packages.length === 0 || !dependencies['@deepseek-ai/cordis'] || !dependencies['@deepseek-ai/schemastery']) {
       throw new Error('Missing DSH/Cordis/Schemastery development dependencies')
     }
-    const mismatches = packages.filter(name => dependencies[name] !== version)
+    for (const name of packages) {
+      if (dependencies[name] !== version) { dependencies[name] = version; changed = true }
+    }
     for (const [name, selected] of Object.entries(entries[version])) {
       const key = `@deepseek-ai/${name}`
-      if (dependencies[key] !== selected) mismatches.push(key)
+      if (dependencies[key] !== selected) { dependencies[key] = selected; changed = true }
     }
-    if (mismatches.length > 0) {
-      throw new Error(`Development cohort does not match DSH ${version}: ${mismatches.join(', ')}`)
+    // Older DSH cohorts used prerelease ranges for runtime peers. Pin every
+    // package present in the committed lock plus historical peers absent from
+    // it, so npm cannot select a later RC. CI never commits these overrides.
+    if ((cohortChanged || manifest.overrides !== undefined) && existsSync('package-lock.json')) {
+      const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+      const names = new Set(packages)
+      for (const path of Object.keys(lock.packages ?? {})) {
+        const match = /(?:^|\/)node_modules\/(@deepseek-ai\/dsh-[^/]+)$/.exec(path)
+        if (match) names.add(match[1])
+      }
+      const overrides = manifest.overrides ??= {}
+      for (const name of [...names, '@deepseek-ai/cordis', '@deepseek-ai/schemastery']) {
+        const selected = name === '@deepseek-ai/cordis' ? entries[version].cordis
+          : name === '@deepseek-ai/schemastery' ? entries[version].schemastery : version
+        if (overrides[name] !== selected) { overrides[name] = selected; changed = true }
+      }
     }
-    console.log(`cohort=${version}`)
+    if (changed) writeFileSync('package.json', `${JSON.stringify(manifest, null, 2)}\n`)
+    console.log(`changed=${changed}`)
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`)
   } else {
-    throw new Error('Usage: node scripts/ci-compatibility.mjs matrix | check <version>')
+    throw new Error('Usage: node scripts/ci-compatibility.mjs matrix | select <version>')
   }
 }
 

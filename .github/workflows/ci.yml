@@ -1,4 +1,4 @@
-# Ordinary branch pushes do not run CI. PRs validate the sole declared DSH
+# Ordinary branch pushes do not run CI. PRs validate every declared DSH
 # cohort on Node 24. v* tags independently build and publish through npm OIDC.
 name: ci
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   compatibility:
-    name: Read supported DSH version
+    name: Read supported DSH versions
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -53,11 +53,20 @@ jobs:
       - name: Ensure npm CLI for cohort resolution
         id: npm24
         run: npm install --global npm@11.19.0
-      - name: Check exact DSH cohort
+      - name: Select exact DSH cohort
         id: cohort
         run: |
+          # Validate the committed rc.3 lock before selecting another cohort.
           npm ci --ignore-scripts --legacy-peer-deps=false
-          node scripts/ci-compatibility.mjs check "$DSH_TEST_VERSION"
+          CHANGED=$(node scripts/ci-compatibility.mjs select "$DSH_TEST_VERSION")
+          if [ "$CHANGED" = 'changed=true' ]; then
+            # npm resolves against the actual tree as well as the lock. Move both
+            # aside: inherited cross-cohort locks can trigger peer backtracking.
+            mkdir -p artifacts/ci
+            mv node_modules artifacts/ci/committed-node_modules
+            mv package-lock.json artifacts/ci/committed-package-lock.json
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund --legacy-peer-deps=false
+          fi
       - name: Verify Node 24
         id: verify24
         if: ${{ !cancelled() && steps.cohort.outcome == 'success' }}
