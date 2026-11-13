@@ -211,6 +211,26 @@ describe('reconcile', () => {
     expect(state.mounted.size).toBe(0)
   })
 
+  it('retries a resolved but unsuccessful describe on the next scan', async () => {
+    document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
+    const unavailable: SettingsJoin = { piAi: undefined, customHeaders: undefined, writable: false }
+    const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    deps.describeNamespace = vi.fn()
+      .mockResolvedValueOnce(unavailable)
+      .mockResolvedValueOnce(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))
+    const state = createScanState()
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect(mounted.size).toBe(0)
+
+    // No pushed invalidation is assumed: an ordinary later scan must recover.
+    reconcile(document.body, deps, state, 'dsh-custom-headers')
+    await flush()
+    expect(deps.describeNamespace).toHaveBeenCalledTimes(2)
+    expect(mounted.size).toBe(1)
+    expect([...mounted.values()][0]?.props.readOnly).toBe(false)
+  })
+
   it('re-renders in place when the stored pick changes', async () => {
     document.body.innerHTML = editCardHtml('acme', 'Acme', ['m1'])
     const { deps, mounted } = makeDeps(makeJoin({ providers: PROVIDERS, profiles: PROFILES }))

@@ -321,11 +321,17 @@ export function reconcile(root: HTMLElement, deps: InjectorDeps, state: ScanStat
       state.mounted.set(target.container, { editor, props: next, savedModelId })
     })
   }
-  // A rejected describe must not permanently disable the injector: clear the
-  // folded promise so the next scan retries the read.
-  void promise.then(run, () => {
+  // A rejected or unavailable describe must not permanently disable the
+  // injector: clear only that folded promise so a later scan retries. Healthy
+  // snapshots remain cached until a pushed invalidation, avoiding an RPC for
+  // every unrelated DOM mutation.
+  const retry = (): void => {
     if (generation === state.generation && state.describePromise === promise) state.describePromise = undefined
-  })
+  }
+  void promise.then(join => {
+    if (join.piAi === undefined || join.customHeaders === undefined) retry()
+    run(join)
+  }, retry)
 }
 
 /** Re-exported so the mount point can label the written field in diagnostics. */
