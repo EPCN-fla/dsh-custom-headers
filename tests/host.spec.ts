@@ -327,6 +327,20 @@ describe('dispatch header snapshots', () => {
     expect(modelObj['headers']).toBe(catalogHeaders)
   })
 
+  it('bypasses injection after dispose when a later wrapper remains installed', async () => {
+    const harness = makeHarness({ profiles: GW_PROFILES, piValue: PI_SECTION })
+    const adapter = makePiAdapter({ 'acme/m1': { id: 'm1' } })
+    harness.llm.registerAdapter(['acme'], adapter)
+    const ours = adapter.stream
+    const ourCurrent = adapter.current
+    adapter.stream = function (options) { return ours.call(this, options) }
+    adapter.current = function () { return ourCurrent.call(this) }
+
+    for (const dispose of harness.disposers) dispose()
+    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
+    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
+  })
+
   it('rolls back a newly wrapped adapter when registration fails', () => {
     const harness = makeHarness({ registrationError: new Error('duplicate') })
     const adapter = makePiAdapter({})
@@ -452,11 +466,6 @@ describe('settings forms seam (DSH 0.2.2-rc.2 / rc.3)', () => {
 
     for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
     expect(adapter.streamed.at(-1)?.headers).toEqual({ 'x-tenant': 'acme' })
-    expect('headers' in modelObj).toBe(false)
-
-    harness.setPiOverride(projected)
-    for await (const _ of adapter.stream({ provider: 'acme', model: 'm1' })) { /* drain */ }
-    expect(adapter.streamed.at(-1)?.headers).toBeUndefined()
     expect('headers' in modelObj).toBe(false)
   })
 

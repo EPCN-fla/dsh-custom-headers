@@ -316,6 +316,10 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   /** Wrapped adapters and their exact dispatch-entry patches, for fiber teardown. */
   const originals = new Map<PiAiAdapterLike, MethodPatch[]>()
+  // A later plugin may still hold our wrappers in its call chain after
+  // teardown. Restoration deliberately leaves that chain intact, so the
+  // closures must also stop contributing headers on their own.
+  let disposed = false
 
   /**
    * Wrap one pi-ai-shaped adapter. current() synchronously returns a one-call
@@ -338,6 +342,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     let pending: PiAiSnapshotLike | undefined
 
     const dispatch = <T>(provider: string, modelId: string, invoke: () => T): T => {
+      if (disposed) return invoke()
       let override: PiAiSnapshotLike | undefined
       try {
         override = snapshotFor(originalCurrent, candidate, provider, modelId)
@@ -382,6 +387,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     const originalRegister = llm.registerAdapter
     const registerTarget = llm as unknown as HeaderCarrier
     const wrappedRegister = (providers: string[], adapter: unknown): unknown => {
+      if (disposed) return originalRegister.call(llm, providers, adapter)
       const rollback = wrapAdapter(adapter)
       try { return originalRegister.call(llm, providers, adapter) }
       catch (error) {
@@ -397,6 +403,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       for (const registration of llm.adapters.values()) wrapAdapter(registration.adapter)
     }
     ctx.effect(() => () => {
+      disposed = true
       restoreMethod(registerPatch)
       for (const patches of originals.values()) {
         for (const patch of patches) restoreMethod(patch)
