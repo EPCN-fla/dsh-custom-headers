@@ -129,6 +129,22 @@ describe('ModelHeaderSelect', () => {
     expect(container!.querySelector('[role="status"]')?.textContent).toContain('denied')
   })
 
+  it('clears a failed write when the mounted row identity changes', async () => {
+    const props = baseProps({ onPick: vi.fn(async () => ({ ok: false as const, error: 'denied' })) })
+    await renderSelect(props)
+    choose('gw')
+    await act(async () => {})
+    expect(container!.querySelector('.ch-select')!.getAttribute('data-failed')).toBe('true')
+
+    await act(async () => {
+      root!.render(createElement(ModelHeaderSelect, { ...props, modelId: 'm2', value: 'relay' }))
+    })
+    expect(container!.querySelector('.ch-select')!.getAttribute('data-failed')).toBeNull()
+    expect(select().title).toBe(translate(en)('modelPicker'))
+    expect(container!.textContent).not.toContain('denied')
+    expect(select().value).toBe('relay')
+  })
+
   it('renders Chinese copy under a zh dictionary', async () => {
     await renderSelect(baseProps({ t: translate(zh as unknown as Record<string, string>) }))
     expect(Array.from(select().options)[0]?.textContent).toBe('默认')

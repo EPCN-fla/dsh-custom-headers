@@ -8,7 +8,7 @@
  * @module dsh-custom-headers/client/ModelHeaderSelect
  */
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChKey } from './locales.js'
 import type { WriteReply } from './types.js'
@@ -47,6 +47,16 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
   const statusId = useId()
+  const identity = JSON.stringify([props.route, props.modelId, props.value ?? null, props.staged === true])
+  const latestIdentity = useRef(identity)
+  const writeGeneration = useRef(0)
+  latestIdentity.current = identity
+  useEffect(() => {
+    setFailed(null)
+    setSaving(false)
+    // Invalidate an in-flight write on identity change and component unmount.
+    return () => { writeGeneration.current += 1 }
+  }, [identity])
   const stored = props.value ?? ''
   const canonical = props.profiles.find(profile => profile.id.trim().toLowerCase() === stored.trim().toLowerCase())
   const value = canonical?.id ?? stored
@@ -62,10 +72,13 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
     : failed !== null ? `${t('modelPickerWriteFailed')}: ${failed}` : null
 
   const onChange = async (next: string): Promise<void> => {
+    const startedIdentity = identity
+    const generation = ++writeGeneration.current
     setSaving(true)
     setFailed(null)
     try {
       const reply = await props.onPick(props.route, props.modelId, next === '' ? null : next)
+      if (generation !== writeGeneration.current || latestIdentity.current !== startedIdentity) return
       if (!reply.ok) {
         setFailed(reply.error)
         console.error(`[dsh-custom-headers] pick write failed for "${props.route}/${props.modelId}": ${reply.error}`)
@@ -73,7 +86,7 @@ export function ModelHeaderSelect(props: ModelHeaderSelectProps): ReactNode {
       // On success the document-updated invalidation re-scans and the next
       // props carry the stored pick; nothing optimistic to commit here.
     } finally {
-      setSaving(false)
+      if (generation === writeGeneration.current) setSaving(false)
     }
   }
 
