@@ -60,7 +60,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare": "npm run build",
     "test:scripts": "node --test scripts/*.test.mjs",
-    "pack:check": "node scripts/package-artifact.mjs"
+    "pack:check": "npm run build && node scripts/package-artifact.mjs"
   },
   "engines": {
     "node": ">=24.9.0"
