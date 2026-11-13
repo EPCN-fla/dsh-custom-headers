@@ -91,3 +91,6 @@ export interface SlotRegistrarFace {
 
 /** One result of a settings write. */
 export type WriteReply = { ok: true } | { ok: false; error: string }
+
+/** A profile save carries the authoritative post-write namespace snapshot. */
+export type WriteProfilesReply = { ok: true; namespace: SettingsNamespaceView } | { ok: false; error: string }

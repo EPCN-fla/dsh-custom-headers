@@ -178,7 +178,11 @@ describe('writeProfiles', () => {
     const reply = await writeProfiles(api, [
       { id: '  gw  ', headers: [{ name: 'X-A', value: '1' }, { name: '', value: '' }] },
     ])
-    expect(reply).toEqual({ ok: true })
+    expect(reply.ok).toBe(true)
+    if (reply.ok) {
+      expect(reply.namespace.revision).toBe(2)
+      expect(reply.namespace.value).toEqual({ profiles: [{ id: 'gw', headers: [{ name: 'X-A', value: '1' }] }] })
+    }
     const written = (state.get(CUSTOM_HEADERS_NS)?.value as { profiles: unknown[] }).profiles
     expect(written).toEqual([{ id: 'gw', headers: [{ name: 'X-A', value: '1' }] }])
     expect(mutate).toHaveBeenCalledTimes(1)
