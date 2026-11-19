@@ -27,11 +27,11 @@ const run = (root, name, args, env = {}) => spawnSync(process.execPath, [script(
 test('compatibility matrix selects only DSH, Cordis and Schemastery development dependencies', () => fixture(root => {
   const matrix = run(root, 'ci-compatibility.mjs', ['matrix'])
   assert.equal(matrix.status, 0, matrix.stderr)
-  assert.deepEqual(Object.keys(manifest.dshCompatibility), ['0.2.2-rc.2', '0.2.2-rc.3'])
+  assert.deepEqual(Object.keys(manifest.dshCompatibility), ['0.2.2-rc.2', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'])
   assert.equal(manifest.engines.node, '>=24.9.0')
-  assert.deepEqual(JSON.parse(matrix.stdout), { 'dsh-version': ['0.2.2-rc.2', '0.2.2-rc.3'] })
+  assert.deepEqual(JSON.parse(matrix.stdout), { 'dsh-version': ['0.2.2-rc.2', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'] })
   for (const name of ['@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-settings']) {
-    assert.equal(manifest.peerDependencies[name], '0.2.2-rc.2 || 0.2.2-rc.3')
+    assert.equal(manifest.peerDependencies[name], '>=0.2.2-rc.2 <0.2.2')
   }
   const defaultVersion = Object.keys(manifest.dshCompatibility).at(-1)
   const cleanDefault = structuredClone(manifest)

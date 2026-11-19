@@ -36,6 +36,7 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 
 | Plugin version | Minimum compatible DSH version | Highest compatible DSH version |
 | --- | --- | --- |
+| 0.5.2 | 0.2.2-rc.2 | 0.2.2-rc.5 |
 | 0.5.1 | 0.2.2-rc.2 | 0.2.2-rc.3 |
 | 0.5.0 | 0.2.2-rc.2 | 0.2.2-rc.2 |
 | 0.4.4 | 0.1.5-rc.2 | 0.2.2-rc.1 |
@@ -47,7 +48,7 @@ The correspondence matrix between plugin versions and DSH versions is as follows
 | 0.2.0 | 0.1.5-rc.2 | 0.1.7-rc.1 |
 | 0.1.0 | 0.1.5-rc.2 | 0.1.5-rc.3 |
 
-**0.5.1 supports DSH `0.2.2-rc.2` and `0.2.2-rc.3` and requires Node.js `>=24.9.0` for every installation and development path. Use plugin `0.4.4` for older DSH versions. Plugin 0.5.0 supports only DSH `0.2.2-rc.2`.**
+**0.5.2 supports DSH `0.2.2-rc.2` through `0.2.2-rc.5` and requires Node.js `>=24.9.0` for every installation and development path. Use plugin `0.4.4` for older DSH versions. Plugin 0.5.0 supports only DSH `0.2.2-rc.2`.**
 
 All three options use the DSH CLI to add the plugin to a given profile (`web` in the examples; substitute as needed). The bundled `cordis.patch.yml` is picked up by the composer, which mounts the host half and serves `lib/client.js` to the Web client as `/plugins/dsh-custom-headers/client.js` — no extra configuration wiring needed after install.
 
@@ -156,7 +157,7 @@ A deployment may also seed composition-base profiles through the plugin's cordis
 
 - Only calls served by the **pi-ai adapter** (`llm-pi-ai` provider routes, including hand-declared custom providers) are affected; other adapter families (e.g. `deepseek-official`) do not pass through this dispatch path and picks are not applied to them.
 - Headers apply to the model's **actual LLM requests**. Configuration-time discovery ("fetch model list from the endpoint") keeps using the provider profile's own headers and does not attach per-model picks.
-- The dropdown is injected into the official Models page's per-row **Model options** disclosure through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the DSH `0.2.2-rc.2` and `0.2.2-rc.3` page structures (the disclosure label is resolved through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
+- The dropdown is injected into the official Models page's per-row **Model options** disclosure through DOM anchors because the official slot contract offers no per-model-row extension point. The injector is defensive against the DSH `0.2.2-rc.2` through `0.2.2-rc.5` page structures (the disclosure label is resolved through the host's dictionary, and controls inside the disclosure may vary with host capabilities): if the official structure changes, the plugin simply stops injecting and leaves the page untouched.
 - The picker writes only explicit `models` rows in `llm-pi-ai`. Rows inherited entirely from an installed catalog without a writable explicit model entry remain disabled; the plugin does not guess a `modelOverrides` write target.
 - Repeated header names within one profile resolve last-wins, case-insensitively (Fetch `Headers` semantics).
 
@@ -176,7 +177,7 @@ All tests live in `tests/`:
 | File | Coverage |
 |---|---|
 | `tests/headers.spec.ts` | Validation, normalization, resolution, and model-row pick reading (pure logic) |
-| `tests/host.spec.ts` | DSH 0.2.2-rc.2 / rc.3 settings seam (volatile config), adapter wrapping, per-call snapshot isolation, interleaving, registration rollback, teardown |
+| `tests/host.spec.ts` | DSH 0.2.2-rc.2 through rc.5 settings seam (volatile config), adapter wrapping, per-call snapshot isolation, interleaving, registration rollback, teardown |
 | `tests/pi-ai-wire.spec.ts` | Real pi-ai openai-completions wire: `model.headers` reach the request, collision precedence, auth intact |
 | `tests/ops.spec.ts` | Client settings seams (pick conflict retry, whole-draft CAS, refusal pass-through, blank-row cleanup) |
 | `tests/injector.spec.ts` | Model-row discovery, idempotent/self-healing injection, async generations, draft identity, language anchors |

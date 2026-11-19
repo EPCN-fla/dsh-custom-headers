@@ -1,6 +1,6 @@
 {
   "name": "dsh-custom-headers",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Per-model custom request headers for DeepSeek Harness: define named header profiles on the plugin detail page, pick one per model in the provider model catalog, and send those headers with every call to that model.",
   "icon": "./icon.svg",
   "license": "MIT",
@@ -67,9 +67,9 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.2 || 0.2.2-rc.3",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.2 || 0.2.2-rc.3",
-    "@deepseek-ai/dsh-settings": "0.2.2-rc.2 || 0.2.2-rc.3",
+    "@deepseek-ai/dsh-api-remotes": ">=0.2.2-rc.2 <0.2.2",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.2 <0.2.2",
+    "@deepseek-ai/dsh-settings": ">=0.2.2-rc.2 <0.2.2",
     "@deepseek-ai/schemastery": "^3.19.0",
     "react": "^18.2.0 || ^19.0.0",
     "react-dom": "^18.2.0 || ^19.0.0"
@@ -77,11 +77,11 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
     "@earendil-works/pi-ai": "^1.1.0",
-    "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-slots": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-settings": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-settings": "0.2.2-rc.5",
     "@deepseek-ai/schemastery": "3.19.0",
     "@types/node": "^24.9.0",
     "@types/react": "^18.3.1",
@@ -106,6 +106,14 @@
       "schemastery": "3.19.0"
     },
     "0.2.2-rc.3": {
+      "cordis": "4.1.0",
+      "schemastery": "3.19.0"
+    },
+    "0.2.2-rc.4": {
+      "cordis": "4.1.0",
+      "schemastery": "3.19.0"
+    },
+    "0.2.2-rc.5": {
       "cordis": "4.1.0",
       "schemastery": "3.19.0"
     }

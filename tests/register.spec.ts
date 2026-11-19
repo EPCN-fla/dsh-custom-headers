@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Client apply() slot registration on DSH 0.2.2-rc.2 / rc.3: the configuration
+ * Client apply() slot registration on DSH 0.2.2-rc.2 through rc.5: the configuration
  * card must land in `plugins.bundle.config`, gated by the slot's declaration.
  */
 
